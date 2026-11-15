@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{{ title }} - Host</title>
+    {{ apge_head() }}
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="host" data-layout="board">
+    <header id="bar">
+        <span class="brand">{{ title }}</span>
+        <span id="where"></span>
+        <span class="timer" id="timer"></span>
+    </header>
+
+    <!-- Each phase fills these; the canvas persists so animations survive state updates -->
+    <div id="above"></div>
+    <div id="stage-wrap">
+        <canvas id="stage"></canvas>
+        <div id="stage-caption"></div>
+    </div>
+    <div id="below"></div>
+
+    <!-- Only on the computer running the game -->
+    <div id="controls"></div>
+
+    <script src="{{ url_for('static', filename='pixelart.js') }}"></script>
+    <script src="{{ url_for('static', filename='common.js') }}"></script>
+    <script src="{{ url_for('static', filename='stage.js') }}"></script>
+    <script src="{{ url_for('static', filename='host.js') }}"></script>
+</body>
+</html>

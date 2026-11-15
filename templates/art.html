@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }} - Art Tool</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="art-tool">
+    <!-- The same editor players draw their heads with, at any grid size, for making game art -->
+    <h1>Pixel Art Tool</h1>
+    <div class="art-controls">
+        <label>Grid <select id="grid">
+            <option>16</option><option>24</option><option selected>32</option><option>48</option><option>64</option>
+        </select></label>
+        <label>PNG scale <select id="scale"><option>1</option><option>4</option><option selected>8</option><option>16</option></select></label>
+        <label>Name <input id="name" value="asset" maxlength="40"></label>
+        <button id="png">Download PNG</button>
+        <button id="txt">Download .txt</button>
+        <label class="file">Open .txt <input id="open" type="file" accept=".txt"></label>
+    </div>
+    <div id="pad"></div>
+    <p class="dim">Pencil, eraser and fill work with a mouse, trackpad, pen tablet or touch. The .txt keeps
+        the art editable (one character per pixel, same format as player heads).</p>
+
+    <script>
+        window.ART_RULES = {palette: {{ palette|tojson }}, chars: {{ pixel_chars|tojson }}};
+    </script>
+    <script src="{{ url_for('static', filename='pixelart.js') }}"></script>
+    <script>
+    (function () {
+        const rules = window.ART_RULES;
+        const $ = id => document.getElementById(id);
+        let pad;
+
+        function mount(grid, value) {
+            pad = PixelArt.mountPad($('pad'), {grid: grid, palette: rules.palette, chars: rules.chars,
+                                                value: value, maxPx: 768});
+        }
+
+        function download(name, blob) {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = name;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        }
+
+        $('grid').addEventListener('change', () => {
+            if (pad.get().replace(/\./g, '') && !confirm('Changing the grid clears the canvas. Continue?')) return;
+            mount(Number($('grid').value));
+        });
+        $('png').addEventListener('click', () => {
+            const art = pad.get(), n = Math.sqrt(art.length), scale = Number($('scale').value);
+            const c = document.createElement('canvas');
+            c.width = c.height = n * scale;
+            PixelArt.draw(c.getContext('2d'), art, rules.palette, rules.chars, 0, 0, n * scale);
+            c.toBlob(b => download($('name').value + '.png', b));
+        });
+        $('txt').addEventListener('click', () => {
+            const art = pad.get(), n = Math.sqrt(art.length);
+            const rows = [];
+            for (let i = 0; i < n; i++) rows.push(art.slice(i * n, (i + 1) * n));
+            download($('name').value + '.txt', new Blob([rows.join('\n') + '\n'], {type: 'text/plain'}));
+        });
+        $('open').addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            file.text().then(text => {
+                const art = text.replace(/\s+/g, '');
+                const n = Math.round(Math.sqrt(art.length));
+                const valid = new RegExp('^[.' + rules.chars + ']+$');
+                if (n * n !== art.length || !valid.test(art)) { alert("That file isn't pixel art from this tool."); return; }
+                $('grid').value = String(n);
+                $('name').value = file.name.replace(/\.txt$/, '');
+                mount(n, art);
+            });
+        });
+        mount(Number($('grid').value));
+    })();
+    </script>
+</body>
+</html>

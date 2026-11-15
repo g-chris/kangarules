@@ -1,0 +1,304 @@
+PROJECT CONVENTIONS
+===================
+
+How we work on Chris's game projects. Read this before starting any task.
+New APGE games get this file from `python -m apge new`; for any other
+project, copy it into the root. Fill in the GAME DESIGN section from the
+game design doc, and keep it up to date: when a new convention is settled,
+add it here so future sessions don't re-derive (or contradict) the same
+decisions. Conventions that should apply to every future game belong in
+APGE's copy (apge/scaffold/CONVENTIONS.txt), released with the engine.
+
+These conventions came out of shipping Hollywood Moguls (showbiz) and
+In a Big Forest. Where a rule exists because something broke, the reason
+is given, so you can judge edge cases instead of following it blindly.
+
+-- GAME DESIGN --------------------------------------------------------------
+
+Down Under Gambler's Sweat It Out! Derby '27 - all-ages party game.
+Players make a stick-figure character (drawn pixel head + 10 skill points
+over STR / SPD / MCR) and bet on each other in commercial-break "fan
+games" across a season of NZ and Australian stops. Most Didgeridollars
+($Dd) after the loansharks collect wins.
+
+- Players: 2-8 (phones), one host screen. Season = 13 stops in 3 zones
+  (Youth Tournament, Minor Leagues, Professional Stadium); zone sets how
+  many Shady Koala visits and Kangarules frisks each gambling event has.
+- Two goals: ship the game, and ship APGE upgrades it needs (engine gaps
+  get fixed in apge, never worked around here).
+- Hidden information is the game: cash, stats, bets, loans and uncaught
+  Shady Koala purchases are private. The host screen shows only odds,
+  random-frisk results, winning bets, event results and the final reveal.
+- Art: placeholder labelled boxes ("[ART: ...]") until real art lands.
+  Players' heads and Chris's game art are made with the SAME pixel editor
+  (static/pixelart.js; /art is the asset tool) so they match.
+- Code layout: rules.py = every tunable number + pure rule functions (unit
+  tested in tests/test_rules.py); game.py = phases/actions; static/stage.js
+  = host canvas (map + animations, pure functions of elapsed time);
+  common.js = helpers shared by host and phone.
+- The season is a data list (rules.SEASON). Roguelike shuffling and extra
+  events later = build a different list / add EVENTS entries, not new code
+  paths. Gambling events differ only by score formula + visual type.
+- Money from an event is applied when its result screen opens, never
+  earlier, so a phone's cash can't spoil an animation still running.
+
+Draft decisions (made while building v0.1; the design doc was silent or
+ambiguous - Chris to confirm or change):
+- Cash is NOT shown on the host map (the doc lists it there, but also says
+  cash is never public). Each phone shows its own cash in the header.
+- VIP = first player to finish their character; their phone gets Start /
+  One more game / Quit. The host computer keeps all controls (incl. Skip).
+- Host may start before everyone finishes; unfinished players get a blank
+  head and 0 stats rather than blocking the game.
+- Odds: rules.odds_calc, ODDS_SIMS=100 runs, fractions simplified to a
+  denominator <= 10, floor 1-10, never-won = 99-1. Payout = stake + stake x
+  odds, rounded down. Odds ignore Shady Koala effects (bought in secret).
+- Shady Koala: each item at most once per visit, any player (incl. self)
+  can be targeted, money is spent even if the purchase is negated. Order:
+  frisk negates ALL of that buyer's purchases -> surviving bribes protect
+  their target from kneecaps/HGH -> HGH applies -> kneecaps (SPD 0) last.
+  Frisks are random across all players (a clean frisk is shown as clean).
+- One LUCK roll per player per score, even where a formula uses LUCK more
+  than once (Speed Hiking, Holding A Note).
+- Loansharks: any number of loans while cash < STARTING_CASH, only on the
+  betting slip, each 10..STARTING_CASH.
+- Mother's Purse: no answer by the timer = DON'T STEAL.
+- Case or No Case: the doc's question text is garbled; implemented as
+  "majority of the other players picks: split the CASE (holder gets $100)
+  or split the $100 CASH (holder gets the case)". Shares round down; tied
+  vote = coin flip; the case value (10-300) is shown only if they pick CASE.
+- Card auction: opening bid $10, the high bidder can't raise themselves,
+  bids must be affordable. No bids = no sale.
+- Ticket scalping: face value is a multiple of 10; asks from $10 to 2x face.
+- Awards: "Sharpest Punter" (most events with a winning bet) and "Biggest
+  Mug" (total stakes on losing bets; koala spending and loans excluded).
+- One more game keeps names and heads; everyone re-spends skill points.
+- Town spellings fixed from the doc: Hanmer Springs, Lightning Ridge.
+
+-- WORKING TOGETHER ---------------------------------------------------------
+
+- Chris owns the design; Claude implements, tests and proposes. When the
+  design doc and the code disagree, ask rather than pick one.
+- Ask before anything outward-facing or hard to undo: pushing, tagging,
+  publishing a release, deleting files or branches, rewriting history.
+  A request like "publish it" covers that publish, not later ones.
+- Never move, delete or force-push a tag or branch that's already on
+  GitHub. If a release needs fixing, cut the next patch version instead
+  (v1.0.0 -> v1.0.1). (Showbiz: the v1.0.0 build failed and the fix
+  shipped as v1.0.1 rather than rewriting the published tag.)
+- Report results as they are. If tests fail, say so and show the output;
+  if a step was skipped, say which and why. "Done" means done and checked.
+- Make a decision when the conventions, code or design doc answer the
+  question; ask only when they don't. When asking, recommend an option.
+- End a task with what changed, how it was checked, and anything left for
+  Chris to decide.
+
+-- BRANCHES AND PULL REQUESTS -----------------------------------------------
+
+- main is always releasable. Work happens on a branch named for the change
+  (fix/bid-controls, feature/awards-voting).
+- One PR = one coherent change. Don't mix a feature, a refactor and an
+  unrelated fix; reviewers (human or Claude) miss things in mixed diffs.
+- Before opening a PR, the author has:
+  1. run the full test suite (see TESTING) and it passes,
+  2. added a CHANGELOG entry (see CHANGELOG),
+  3. re-read the whole diff for leftovers: debug prints, commented-out
+     code, stray files (__pycache__, .DS_Store, build/, venv/).
+- PR description:
+    Summary   - what changed and why, in 2-4 sentences
+    Changes   - bullet list, grouped by area
+    Testing   - what was run and the result (e.g. "bot matrix 160/160,
+                browser test 4/4, packaged build smoke test passed")
+    Follow-ups - known gaps, if any
+- Opening PRs needs the GitHub CLI (`brew install gh`, then
+  `gh auth login`). Without it, push the branch and Chris opens the PR on
+  github.com.
+
+-- REVIEWING PRS ------------------------------------------------------------
+
+- Run /code-review in Claude Code on the branch, then read the diff
+  yourself against this checklist:
+  [ ] Correctness: does it do what the PR says, including edge cases
+      (0 players, 1 player, everyone disconnected, timer firing at the
+      same moment as a click, a player reloading mid-phase)?
+  [ ] Multiplayer safety: see APGE RULES below.
+  [ ] Input validation: every value from a client is checked on the
+      server (type, range, phase). Never trust the phone.
+  [ ] DRY: no copy-pasted blocks; shared logic lives in one place
+      (see CODE).
+  [ ] Tests: new behaviour has a test; a bug fix has a test that failed
+      before the fix.
+  [ ] CHANGELOG and version updated; README updated if players will
+      notice the change.
+- A review finding must name a concrete failure: "if X happens, then Y
+  goes wrong". Style preferences without a failure are suggestions, not
+  blockers.
+- Label findings with the CHANGELOG severities (CRITICAL / HIGH / MEDIUM /
+  LOW) so it's clear what blocks the merge: CRITICAL and HIGH must be
+  fixed; MEDIUM normally is; LOW can be a follow-up.
+- After fixes, re-run the tests before approving. Chris merges.
+
+-- CHANGELOG ----------------------------------------------------------------
+
+- Every user-visible change gets an entry in ChangeLog.txt (games) or
+  CHANGELOG.md (APGE), newest version at the top, in the same PR.
+- Format (from showbiz/ChangeLog.txt):
+
+    ## Version 1.2.0 (YYYY-MM-DD)
+
+    ### Bug Fixes
+    - **Fixed <what the player saw>** (SEVERITY)
+      - Issue: what went wrong, from the player's point of view
+      - Root cause: why, in code terms
+      - Solution: what changed
+      - Files modified: a.py, b.js
+
+    ### New Features
+    - **<Feature>**: one or two lines on what it does for the player
+
+    ### Packaging / Internal
+    - build, CI, refactors players won't notice
+
+- Severities:
+    CRITICAL - game freezes, crashes, or loses a player's progress
+    HIGH     - blocks a player or breaks a rule (e.g. can't bid, wrong
+               winner), or the game can't be played in a common setup
+    MEDIUM   - wrong or confusing display; recoverable without restarting
+    LOW      - cosmetic
+- Write the Issue line for Chris reading it in six months: describe what
+  happened in the game, not just the function name.
+
+-- VERSIONS AND RELEASES ----------------------------------------------------
+
+- Semantic versions: 0.x while the design is still moving; 1.0.0 when the
+  game is feature-complete; then MAJOR.MINOR.PATCH (patch = fixes only,
+  minor = new features, major = breaks saves or the play experience).
+- The version lives in ONE constant and everything else (title screen,
+  host page, package metadata) reads it from there. If a tool forces a
+  second copy (e.g. pyproject.toml), bump them in the same commit and list
+  both here.
+- Release checklist:
+  1. On main, tests pass, CHANGELOG has the new version and date.
+  2. Every new dependency is in requirements.txt (CI installs only from
+     that file).
+  3. Every asset the game loads is committed (check `git status`).
+  4. `git tag vX.Y.Z && git push origin vX.Y.Z` - the release workflow
+     builds Windows, macOS (Apple Silicon) and Linux and attaches them.
+  5. When CI finishes, check each README download link resolves and run
+     at least one downloaded build. A green CI run isn't proof the
+     download works.
+- CI runner labels go stale (showbiz: `macos-14` stopped being offered and
+  the job was cancelled without running). Prefer `-latest` labels; if a job
+  is cancelled with no steps run, suspect the runner label first.
+- Builds are single-file PyInstaller executables; first launch takes
+  ~7-10s while they unpack. The README explains the unsigned-app warnings
+  on Windows and macOS.
+
+-- CODE ---------------------------------------------------------------------
+
+Reuse and DRY
+- Rule of three: the second time you write something, notice it; the
+  third time, extract it. Don't build abstractions for a single use.
+- No per-phase/per-season copies. Showbiz had near-identical Winter and
+  Summer blocks in host.js and four copies of the "everyone pressed
+  Continue" logic; each copy drifted and bugs got fixed in one but not
+  the others. Parameterise instead (one function taking the season), or
+  drive it from data (a table of phases/items/prices rather than an
+  if-chain).
+- One source of truth for game data: names, costs, timers, phase names
+  and point values are constants in one module, never retyped in the JS.
+  If the client needs them, send them in the state.
+- If a second game would want it, it belongs in APGE, not the game (see
+  APGE RULES). Don't work around an engine gap inside a game; fix the
+  engine and bump its version.
+
+Style
+- Match the surrounding code: naming, comment density, file layout. New
+  code should look like it was always there.
+- Comments explain why, not what. A comment that only restates the line
+  below is noise; a comment saying which bug a guard prevents is gold.
+- Delete dead code instead of commenting it out; git remembers.
+- Keep functions short and named for what they do in game terms
+  (award_card_to_player, not process_data).
+- Python 3.9 compatible unless the project says otherwise (no `match`,
+  no `X | Y` type unions).
+
+Safety and robustness
+- Validate everything from the client on the server: types (note that
+  True is an int in Python; reject bools where you want numbers), ranges,
+  list indices (no negative indexing), duplicates, and the current phase.
+- Escape player-typed text before putting it into innerHTML (use
+  APGE.escapeHtml). Studio names and film titles are user input.
+- No CDN links: bundle every library. Games are played on home Wi-Fi
+  that may have no internet (showbiz didn't load at all offline until
+  socket.io was bundled).
+- Wrap localStorage/sessionStorage access in try/catch; private browsing
+  can throw.
+- Log output must survive Windows consoles (APGE's server already sets
+  errors='replace'; keep it if you write your own entry point).
+
+-- APGE RULES (party games built on the engine) ---------------------------
+
+- Games pin an exact APGE tag in requirements.txt
+  (apge @ git+https://github.com/g-chris/apge@vX.Y.Z). Engine changes are
+  made in the apge repo, released as a new tag, then the game's pin is
+  bumped in its own PR.
+- Start a new game with `python -m apge new <dir> --title "<Title>"`.
+- Game code never touches socket ids. Players are `Player` objects with a
+  stable `id`; store per-player data in player.public (everyone sees) or
+  player.private (only that player sees). Server-only secrets go on the
+  Game object itself.
+- Every action is declared with the phases it's valid in:
+  @action('bid', phases='bidding'). Never accept an action "in any phase"
+  just to save typing; late taps after a timer are the most common bug.
+- Every phase must be able to end: a timer with an @on_timeout, a
+  ready=True Continue screen, or completion logic plus an @on_skip/timeout
+  so the host's Skip button always works. A phase that can wait forever
+  will soft-lock a real game night.
+- Completion checks use include_disconnected=False when a missing player
+  shouldn't hold everyone up; the timer covers them.
+- Don't start your own threads or timers that touch game state; use
+  self.start_timer / phase timers (they're token-checked and locked).
+- Hidden information never goes in self.public or player.public.
+  Override player_view/host_view if a screen needs a tailored view.
+- See apge/CLAUDE.md for the engine's own principles before editing APGE.
+
+-- TESTING ------------------------------------------------------------------
+
+- Every game has bot tests (tests/test_bots.py): a Bot subclass whose
+  decide() plays the game, run through apge.testing's standard scenarios
+  (eager, idle, slow, double-tap, chaos, flaky reconnects, ghosts quitting
+  mid-phase, a second game after New Game). Add ghost_phases for every
+  phase a player could walk away in.
+- Add an invariant(game) check for the game's rules (money never
+  negative, scores only go up, no more answers than players...).
+- New phase or action -> update the bot's decide() in the same PR, or the
+  bots will sit idle and the tests will only prove the timers work.
+- Bug fixes: reproduce with a test or bot scenario first, watch it fail,
+  then fix the root cause and watch it pass. If the harness couldn't catch
+  the bug, improve the harness too.
+- UI changes: run a browser-level check (Playwright driving the real host
+  and phone pages, phone-sized viewport) and look at screenshots. Bots
+  only test the server; showbiz's hidden bid buttons were only caught in
+  the browser.
+- Before a release: full bot matrix (3+ seeds), browser test, and a smoke
+  test of the packaged executable (start it, load every page, play a
+  round).
+- Tests and their results are part of the PR description; "tests pass" is
+  not enough, give the counts.
+
+-- COMMITS AND FILES --------------------------------------------------------
+
+- Commit messages: a short imperative summary line ("Fix bid controls
+  vanishing after spectating"), blank line, then why it changed. Version
+  commits start with the version ("Version 1.2.0: ...").
+- Never commit generated or local files: __pycache__/, *.pyc, .DS_Store,
+  venv/, build/, dist/, saves, logs. Keep .gitignore current and check
+  `git status` before committing; if one slipped in, `git rm --cached` it.
+- Docs that live in the repo:
+    README.md        - for players: download links, first-run steps per
+                       platform, how to host, rules, troubleshooting
+    ChangeLog.txt    - version history (see CHANGELOG)
+    CONVENTIONS.txt  - this file
+    CLAUDE.md        - optional: notes only Claude needs (architecture
+                       gotchas, commands to run)

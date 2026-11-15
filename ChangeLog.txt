@@ -1,0 +1,30 @@
+# Down Under Gambler's Sweat It Out! Derby '27 - Change Log
+
+## Version 0.1.0 (2026-11-15)
+
+First playable draft of the design doc's critical path, with placeholder art.
+
+### New Features
+- **Character creation**: join with a name (15 letters), draw a 16x16 pixel head on the
+  phone (pencil, eraser, fill, mirror, undo), spend 10 skill points on STR / SPD / MCR.
+  The first player to finish is the HOST and starts the game from their phone
+- **Season**: 13 stops across NZ and Australia in three zones, with a map between stops
+- **Gambling events**: Foot Race, Speed Hiking, Fist Fight, Australian Rules Sand Curling,
+  Mini Golf, Mascot Race, Sumo Wrestle, Half-Court Shots, Holding A Note. Odds are simulated
+  from everyone's stats, bets go up in $Dd 10 steps with a live "On win" preview, and each
+  event has a host-screen animation (race lanes, last-one-standing, or turn by turn)
+- **Shady Koala**: secret visits (more per zone) selling Bat to Kneecaps, HGH Injection and
+  Bribe the Feds. **Kangarules Gambling Commission** frisks negate everything a frisked
+  player bought and show it on the big screen
+- **Loansharks**: Shrimp and Barbie lend to anyone below the starting cash; they want double
+  back at the end
+- **Special events**: Mother's Purse, Trading Card Auction, Case or No Case, Ticket Scalping
+- **Final results**: standings revealed last place first, then the loans are collected, then
+  the winner and awards. The host can start one more game or quit
+- **Art tool** at /art: the same pixel editor at 16-64 px, saves PNG and editable .txt
+
+### Packaging / Internal
+- Built on APGE 0.2.0 (VIP phone controls, quit, per-game name length, lobby setup in the
+  bot harness - all added for this game)
+- Tests: rules unit tests, bot matrix (4 bots, every standard scenario, ghosts quitting in
+  every input phase), Playwright browser check of every screen

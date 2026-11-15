@@ -1,0 +1,78 @@
+# Builds executables for Linux, macOS (Apple Silicon) and Windows and attaches them to a
+# GitHub Release whenever a version tag like v1.0.0 is pushed.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04        # older glibc = runs on more distros
+            asset: Kangarules-linux-x86_64.tar.gz
+          - os: macos-latest        # Apple Silicon (arm64)
+            asset: Kangarules-macos-arm64.zip
+          - os: windows-latest
+            asset: Kangarules-windows-x64.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller==6.22.3 "python-socketio[client]"
+      - name: Unit tests
+        run: python -m unittest discover tests -p "test_[gr]*.py"
+      - name: Bot tests
+        run: python tests/test_bots.py --quick
+      - name: Build executable
+        run: pyinstaller --noconfirm build.spec
+      - name: Smoke test
+        shell: bash
+        env:
+          APGE_NO_BROWSER: '1'
+          APGE_PORT: '8765'
+        run: |
+          ./dist/Kangarules &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8765/player > /dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:8765/ > /dev/null
+          curl -sf http://127.0.0.1:8765/apge/apge.js > /dev/null
+          echo "Server answered after ${i}s"
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: tar -czf ${{ matrix.asset }} -C dist Kangarules
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: cd dist && zip -9 ../${{ matrix.asset }} Kangarules
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: cp dist/Kangarules.exe ${{ matrix.asset }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: assets/*

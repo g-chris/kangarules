@@ -69,7 +69,7 @@ def valid_head(art):
 ZONES = {
     1: {'name': 'Youth Tournament', 'koala_visits': 1, 'frisks': 0},
     2: {'name': 'Minor Leagues', 'koala_visits': 2, 'frisks': 1},
-    3: {'name': 'Professional Stadium', 'koala_visits': None, 'frisks': 2},
+    3: {'name': 'Professional Stadium', 'koala_visits': None, 'frisks': 1},
 }
 
 # ---- Shady Koala ("Shenanigans") ------------------------------------------------------------

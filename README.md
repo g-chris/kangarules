@@ -23,7 +23,7 @@ The host screen opens at http://localhost:8080. Players scan the QR code, pick a
 draw their head and spend 10 skill points. The first player to finish is the HOST and
 gets the Start button on their phone.
 
-Until APGE v0.2.0 is tagged on GitHub, install the engine from a local checkout instead:
+Until APGE v0.3.0 is tagged on GitHub, install the engine from a local checkout instead:
 `pip install -e "../apge[testing]"`.
 
 ## How to play
@@ -40,11 +40,25 @@ Until APGE v0.2.0 is tagged on GitHub, install the engine from a local checkout 
 - **Special events** between towns: Mother's Purse, a trading card auction, Case or No
   Case, and ticket scalping.
 
-## Making art
+## Making art (Developer Mode)
 
-Open http://localhost:8080/art on the host computer: the same pixel editor players draw
-their heads with, at 16 to 64 pixels, for a mouse, trackpad, pen tablet or touch screen.
-Save as PNG, or as .txt to keep editing later.
+```bash
+python app.py --dev
+```
+
+This opens Developer Mode at http://localhost:8080/dev on the computer running the game
+(packaged builds don't have it).
+
+- **Art**: every picture the game needs, in columns (category, art, versions). Draw in the
+  same pixel editor players use for their heads, at any canvas size, or import a PNG.
+  **Save**, **Save As** (a new version, or a starting point for different art) and **Use in
+  game** (which version the game shows). The live preview shows the drawing on every
+  screen it appears on, before you save.
+- **Screens**: every host and phone screen with sample players, for checking how things
+  look without playing to that point.
+
+Art is saved in `art/`; commit it. Anything without a version in game shows its
+`[ART: ...]` placeholder.
 
 ## Files
 
@@ -53,8 +67,12 @@ Save as PNG, or as .txt to keep editing later.
 | `CONVENTIONS.txt` | How we work, plus the GAME DESIGN summary and the draft decisions to confirm |
 | `rules.py` | Every tunable number (STARTING_CASH, LUCK range, timers, prices...) and the rules as plain functions |
 | `game.py` | Phases and actions: what happens when |
-| `templates/` + `static/` | Host screen (`host.js`, `stage.js` canvas), phone (`player.js`), shared pixel editor (`pixelart.js`) |
+| `templates/` + `static/` | Host screen (`host.js`, `stage.js` canvas), phone (`player.js`); the pixel editor comes from APGE |
+| `dev.py` | Developer Mode: the list of art the game needs, and a sample state for every screen |
+| `art/` | The game's art (made in Developer Mode) |
 | `tests/test_rules.py` | Unit tests for scoring, odds, the Shady Koala and specials |
 | `tests/test_bots.py` | Bots play whole seasons: `python tests/test_bots.py --quick` |
+| `tests/test_dev.py` | Every sample screen builds; the art list matches what the JS draws |
+| `tests/test_dev_browser.py` | Playwright drives Developer Mode (draw, save, Save As, import) and loads every sample screen |
 | `tests/test_browser.py` | Playwright drives the real pages: `pip install playwright && python -m playwright install chromium`, then `python tests/test_browser.py --shots shots/` |
 | `ChangeLog.txt` | Version history |

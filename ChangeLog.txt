@@ -1,5 +1,27 @@
 # Down Under Gambler's Sweat It Out! Derby '27 - Change Log
 
+## Version 0.2.0 (2026-11-22)
+
+### New Features
+- **Developer Mode** (`python app.py --dev`, opens /dev): the art CMS and a screen gallery,
+  separate from playing. Every picture the game needs is listed by category (29 of them:
+  title, characters, props, the nine venues, event scenery, the map), each with its own
+  canvas size (Agent Kevin is 32x48, tall and narrow). Draw, Save, Save As (new version, or
+  a starting point for other art), import PNGs, and pick the version used in game. The
+  live preview shows the drawing on the real screens it appears on before it's saved
+- **Screens tab**: all 45 host and phone screens with four sample players, from the lobby
+  to the final reveal, for checking art and layout without playing to that point
+- Art drawn in Developer Mode replaces its placeholder box on the TV and phones; anything
+  not drawn yet stays an `[ART: ...]` box
+- The head-drawing pad gained a colour picker tool
+
+### Packaging / Internal
+- Built on APGE 0.3.0 (Developer Mode, art library, shared pixel editor - all added for
+  this game). The pixel editor now comes from APGE; /art and static/pixelart.js are gone
+- dev.py: the art list and sample screens; venue art ids from rules.venue_art()
+- Tests: tests/test_dev.py (every sample screen builds, art list matches the JS) and
+  tests/test_dev_browser.py (Playwright drives Developer Mode and loads every screen)
+
 ## Version 0.1.0 (2026-11-15)
 
 First playable draft of the design doc's critical path, with placeholder art.

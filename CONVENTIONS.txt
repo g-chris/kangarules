@@ -29,13 +29,17 @@ games" across a season of NZ and Australian stops. Most Didgeridollars
 - Hidden information is the game: cash, stats, bets, loans and uncaught
   Shady Koala purchases are private. The host screen shows only odds,
   random-frisk results, winning bets, event results and the final reveal.
-- Art: placeholder labelled boxes ("[ART: ...]") until real art lands.
-  Players' heads and Chris's game art are made with the SAME pixel editor
-  (static/pixelart.js; /art is the asset tool) so they match.
+- Art: every picture is an Asset in dev.py (ART), made and picked in
+  Developer Mode (python app.py --dev -> /dev) and saved in art/. Until an
+  asset has a version in game it shows as a labelled box ("[ART: ...]").
+  Players' heads and the game art use the SAME pixel editor and palette
+  (APGE's pixelart.js, rules.PALETTE) so they match. Venue art ids come
+  from rules.venue_art(venue).
 - Code layout: rules.py = every tunable number + pure rule functions (unit
   tested in tests/test_rules.py); game.py = phases/actions; static/stage.js
   = host canvas (map + animations, pure functions of elapsed time);
-  common.js = helpers shared by host and phone.
+  common.js = helpers shared by host and phone; dev.py = the art list and
+  Developer Mode sample screens (tests/test_dev.py keeps them honest).
 - The season is a data list (rules.SEASON). Roguelike shuffling and extra
   events later = build a different list / add EVENTS entries, not new code
   paths. Gambling events differ only by score formula + visual type.
@@ -261,6 +265,13 @@ Safety and robustness
   self.start_timer / phase timers (they're token-checked and locked).
 - Hidden information never goes in self.public or player.public.
   Override player_view/host_view if a screen needs a tailored view.
+- Art: list every picture in one Asset list (dev.py) and draw it with
+  APGE.art / the game's art() helper, which shows a labelled placeholder
+  until a version is in game. Never hard-code image paths in the JS. Make
+  and pick art in Developer Mode (python app.py --dev) and commit art/.
+- Every screen gets a Developer Mode sample Screen, and every Asset lists
+  the screens it appears on, so its live preview is right. A new phase or
+  screen adds its sample in the same PR.
 - See apge/CLAUDE.md for the engine's own principles before editing APGE.
 
 -- TESTING ------------------------------------------------------------------

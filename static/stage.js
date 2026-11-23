@@ -3,8 +3,9 @@
  *
  * Every scene is a pure function of (elapsed seconds, data), so a state update arriving
  * mid-animation never restarts it: Stage.scene(key, fn) only resets the clock when the
- * key changes. Placeholder art is labelled boxes ("[ART: ...]") until real art lands;
- * players are stick figures wearing the head they drew.
+ * key changes. Game art (dev.ART, drawn in Developer Mode) is drawn with art(); anything
+ * without a version in game yet is a labelled box ("[ART: ...]"). Players are stick
+ * figures wearing the head they drew.
  */
 (function () {
     'use strict';
@@ -73,8 +74,23 @@
         c.setLineDash([6, 4]);
         c.strokeRect(x, y, w, h);
         c.setLineDash([]);
-        if (corner) text(c, label, x + 4, y - 9, 11, {color: 'rgba(244,236,216,0.7)', align: 'left'});
-        else text(c, label, x + w / 2, y + h / 2, Math.max(10, Math.min(18, h / 3)), {color: INK});
+        if (corner) { text(c, label, x + 4, y - 9, 11, {color: 'rgba(244,236,216,0.7)', align: 'left'}); return; }
+        // Shrink the label until it fits inside the box (art names can be long)
+        let size = Math.max(10, Math.min(18, h / 3));
+        c.font = size + 'px system-ui, sans-serif';
+        while (size > 8 && c.measureText(label).width > w - 8) {
+            size -= 1;
+            c.font = size + 'px system-ui, sans-serif';
+        }
+        text(c, label, x + w / 2, y + h / 2, size, {color: INK});
+    }
+
+    /** Game art fitted into a box, or its labelled placeholder until it has some. */
+    function art(c, id, x, y, w, h, opts) {
+        opts = opts || {};
+        if (APGE.art.draw(c, id, x, y, w, h, opts)) return;
+        const a = APGE.art.info(id);
+        box(c, `[ART: ${a ? a.name : id}]`, x, y, w, h, opts.color, opts.corner);
     }
 
     /**
@@ -143,8 +159,11 @@
             const ox = (w - (lon1 - lon0) * s) / 2, oy = (h - (lat0 - lat1) * s) / 2;
             const px = lon => ox + (lon - lon0) * s, py = lat => oy + (lat0 - lat) * s;
 
-            LANDMASSES.forEach(m => box(c, m.label, px(m.lon[0]), py(m.lat[0]),
-                (m.lon[1] - m.lon[0]) * s, (m.lat[0] - m.lat[1]) * s, 'rgba(0,132,61,0.25)', true));
+            // The map art covers the whole lon/lat window; until there is some, rough boxes
+            if (!APGE.art.draw(c, 'map', px(lon0), py(lat0), (lon1 - lon0) * s, (lat0 - lat1) * s, {fit: 'fill'})) {
+                LANDMASSES.forEach(m => box(c, m.label, px(m.lon[0]), py(m.lat[0]),
+                    (m.lon[1] - m.lon[0]) * s, (m.lat[0] - m.lat[1]) * s, 'rgba(0,132,61,0.25)', true));
+            }
 
             const stops = data.season || [];
             c.strokeStyle = 'rgba(255,205,0,0.5)';
@@ -198,7 +217,7 @@
             const laneSize = (up ? w - margin * 2 : h - margin) / lanes.length;
             const figH = Math.min(laneSize * 0.75 * (ev.scale || 1), (up ? 140 : h * 0.6));
             if (up) {
-                box(c, '[ART: summit / finish line]', margin, margin - 40, w - margin * 2, 30);
+                art(c, 'summit', margin, margin - 40, w - margin * 2, 30);
             } else {
                 c.fillStyle = INK;
                 for (let y = 0; y < h; y += 16) c.fillRect(margin + span + 10, y, 6, 8);
@@ -243,13 +262,15 @@
             const R = Math.min(w, h) * (variant === 'sumo' ? 0.34 : 0.28);
             const figH = Math.min(150, h * 0.22) * (ev.scale || 1) * (variant === 'sumo' ? 0.75 : 1);
             if (variant === 'sumo') {
-                c.strokeStyle = GOLD; c.lineWidth = 5;
-                c.beginPath(); c.ellipse(cx, cy, R, R * 0.45, 0, 0, Math.PI * 2); c.stroke();
-                text(c, '[ART: dohyo ring]', cx, cy + R * 0.45 + 18, 14);
+                if (!APGE.art.draw(c, 'dohyo', cx - R, cy - R * 0.45, R * 2, R * 0.9, {fit: 'fill'})) {
+                    c.strokeStyle = GOLD; c.lineWidth = 5;
+                    c.beginPath(); c.ellipse(cx, cy, R, R * 0.45, 0, 0, Math.PI * 2); c.stroke();
+                    text(c, `[ART: ${APGE.art.info('dohyo').name}]`, cx, cy + R * 0.45 + 18, 14);
+                }
             } else if (variant === 'note') {
-                box(c, '[ART: Opera House stage]', w * 0.1, h * 0.12, w * 0.8, 36);
+                art(c, 'opera_stage', w * 0.1, h * 0.12, w * 0.8, 36);
             } else {
-                box(c, '[ART: dust cloud]', cx - R, cy - R * 0.4 - 60, R * 2, 32);
+                art(c, 'dust_cloud', cx - R, cy - R * 0.4 - 60, R * 2, 32);
             }
             seats.forEach((id, i) => {
                 const out = outAt[id] !== undefined && t >= outAt[id];
@@ -290,9 +311,9 @@
     }
 
     const PROPS = {
-        kick: {label: '[ART: sand pitch]', ball: '#d9c79e'},
-        golf: {label: '[ART: mini golf hole + sculptures]', ball: '#ffffff'},
-        shot: {label: '[ART: half court]', ball: '#ff8c00'},
+        kick: {art: 'sand_pitch', ball: '#d9c79e'},
+        golf: {art: 'golf_hole', ball: '#ffffff'},
+        shot: {art: 'half_court', ball: '#ff8c00'},
     };
 
     function turnsScene(view) {
@@ -310,11 +331,11 @@
             const u = Math.min(1, (t - k * TURN) / (TURN * 0.7));
             const id = turns[k], p = byId[id];
             const ground = h * 0.78, figH = Math.min(160, h * 0.3);
-            box(c, prop.label, 20, ground + 12, w - 40, h - ground - 24);
+            art(c, prop.art, 20, ground + 12, w - 40, h - ground - 24);
             let fx = 90;
             if (ev.prop === 'shot') {
                 const hoopX = w - 120, hoopY = h * 0.3;
-                box(c, '[ART: hoop]', hoopX - 10, hoopY - 50, 70, 50);
+                art(c, 'hoop', hoopX - 10, hoopY - 50, 70, 50);
                 fx = 80 + (w * 0.42 - 80) * ease(Math.min(1, u * 1.6));
                 const leap = Math.sin(Math.PI * Math.min(1, Math.max(0, u * 1.6 - 0.6))) * 50;
                 figure(c, fx, ground - leap, figH, {head: p.head, rules: rules, name: p.name, swing: Math.sin(t * 12) * (u < 0.6 ? 0.8 : 0), armsUp: u > 0.6});
@@ -362,7 +383,7 @@
                 const x = 40 + i * (cw + 16), y = h * 0.35;
                 if (i >= shown) { box(c, '?', x, y, cw, ch, 'rgba(0,0,0,0.3)'); return; }
                 total += card.value;
-                box(c, card.holo ? '[ART: HOLO]' : '[ART: card]', x, y, cw, ch, card.holo ? 'rgba(255,205,0,0.35)' : 'rgba(255,255,255,0.12)');
+                art(c, card.holo ? 'card_holo' : 'card', x, y, cw, ch, {color: card.holo ? 'rgba(255,205,0,0.35)' : 'rgba(255,255,255,0.12)'});
                 text(c, card.holo ? 'Holographic card reveal!' : card.name, x + cw / 2, y - 18, 13, {bold: card.holo, color: card.holo ? GOLD : INK});
                 if (card.holo) text(c, card.name, x + cw / 2, y + ch + 18, 13);
                 text(c, `Sell Value: $${card.value}`, x + cw / 2, y + ch + (card.holo ? 38 : 18), 15, {bold: true, color: GOLD});
@@ -371,5 +392,5 @@
         };
     }
 
-    window.Stage = {mount, scene, clear, mapScene, eventScene, cardsScene, figure, box, GREEN, GOLD};
+    window.Stage = {mount, scene, clear, mapScene, eventScene, cardsScene, figure, box, art, GREEN, GOLD};
 })();

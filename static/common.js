@@ -35,8 +35,15 @@ const Common = (function () {
         return n + (s[(v - 20) % 10] || s[v] || s[0]);
     }
 
-    /** Placeholder art box for HTML screens. */
-    const art = (label, cls) => `<div class="art ${cls || ''}">[ART: ${esc(label)}]</div>`;
+    /** Game art for HTML screens (an id from dev.ART), or its placeholder box until it has some. */
+    function art(id, cls) {
+        const a = APGE.art.info(id);
+        if (!a) console.error('Art ' + id + ' is not in dev.ART');
+        if (a && a.url) {
+            return `<img class="art-img ${cls || ''} ${a.pixelated ? 'pixelated' : ''}" src="${esc(a.url)}" alt="${esc(a.name)}">`;
+        }
+        return `<div class="art ${cls || ''}">[ART: ${esc(a ? a.name : id)}]</div>`;
+    }
 
     function stopTitle(stop) {
         if (!stop) return '';

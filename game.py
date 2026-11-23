@@ -228,6 +228,7 @@ class Derby(Game):
         self.public['event'] = {
             'id': stop['event'], 'name': event['name'], 'setup': event['setup'],
             'town': stop['town'], 'venue': stop['venue'], 'zone_name': zone['name'],
+            'venue_art': R.venue_art(stop['venue']),
             'visual': event['visual'], 'direction': event.get('direction'),
             'variant': event.get('variant'), 'prop': event.get('prop'),
             'unit': event.get('unit'), 'scale': event.get('scale', 1),

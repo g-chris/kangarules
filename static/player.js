@@ -39,7 +39,7 @@ const continueButton = me => me.ready
     ? '<p class="done">Waiting for everyone else...</p>'
     : '<button class="apge-button wide" data-act="continue">Continue</button>';
 
-const watch = (view, line) => `<div class="center">${art('big screen icon', 'small')}
+const watch = (view, line) => `<div class="center">${art('big_screen', 'small')}
     <h2>${line || 'Watch the big screen!'}</h2><p class="dim">${stopTitle(view.data.season[view.data.stop])}</p></div>`;
 
 // ---- lobby: draw a head, spend skill points, wait for the host ---------------------------
@@ -126,11 +126,11 @@ function betOverlay(view, me, d) {
         const players = byId(view);
         if (d.koalaItem) {
             const item = rules.koala_items.find(i => i.id === d.koalaItem);
-            return `<div class="sheet">${art('Shady Koala "Shenanigans"', 'small')}<h2>${esc(item.name)}: who?</h2>
+            return `<div class="sheet">${art('shady_koala', 'small')}<h2>${esc(item.name)}: who?</h2>
                 ${view.players.map(p => `<button class="pick" data-act="koala-target" data-id="${p.id}">${head(p, rules, 32)} ${esc(p.name)}</button>`).join('')}
                 <button class="link" data-act="koala-back">Never mind</button></div>`;
         }
-        return `<div class="sheet">${art('Shady Koala "Shenanigans"')}<h2>"G'day. Need anything?"</h2>
+        return `<div class="sheet">${art('shady_koala')}<h2>"G'day. Need anything?"</h2>
             <p>You have ${dd(priv.cash)}</p>
             ${rules.koala_items.map(i => {
                 const bought = koala.bought[i.id];
@@ -141,7 +141,7 @@ function betOverlay(view, me, d) {
     }
     if (d.loanOpen) {
         d.loan = d.loan || rules.loan_min;
-        return `<div class="sheet">${art('Shrimp and Barbie, dingo loansharks')}<h2>"Short on cash, mate?"</h2>
+        return `<div class="sheet">${art('loansharks')}<h2>"Short on cash, mate?"</h2>
             ${stepper('loan', d.loan, dd(d.loan))}
             <p class="red big">Shrimp and Barbie expect DOUBLE back at the end of the season: you'll owe ${dd(d.loan * rules.loan_multiplier)}.</p>
             <button class="apge-button wide shark" data-act="borrow">Borrow ${dd(d.loan)}</button>
@@ -186,7 +186,7 @@ function auction(view, me, d) {
 function caseScreen(view, me, d) {
     const c = view.data.case, priv = me.private;
     if (priv.case_value !== undefined) {
-        return `<div class="center">${art('silver briefcase')}<h2>You have the case</h2>
+        return `<div class="center">${art('briefcase')}<h2>You have the case</h2>
             <p class="huge gold">${dd(priv.case_value)}</p>
             <p>Tell them it's worth whatever you like.</p></div>`;
     }

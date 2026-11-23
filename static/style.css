@@ -26,6 +26,14 @@ h1, h2, h3 { margin: 0.3em 0; }
 .apge-button.on { outline: 3px solid var(--gold); }
 .link { background: none; border: 0; color: var(--dim); text-decoration: underline; font-size: 1rem; padding: 10px; cursor: pointer; }
 
+/* Game art (dev.ART). Height sets the size; the width follows the picture's shape */
+.art-img { display: block; margin: 10px auto; height: 120px; max-width: 100%; object-fit: contain; }
+.art-img.pixelated { image-rendering: pixelated; }
+.art-img.small { height: 56px; }
+.art-img.title-art { height: 170px; }
+.art-img.prop { height: 140px; }
+.art-img.agent { height: 240px; }
+
 /* Placeholder art: a dashed box saying what will go there */
 .art {
     border: 2px dashed var(--ink); background: var(--panel); color: var(--ink);
@@ -132,7 +140,3 @@ body.phone { padding: 12px 16px 40px; max-width: 520px; margin: 0 auto; }
 .swatch.on { outline: 3px solid var(--gold); outline-offset: 1px; }
 
 /* ---- art tool ------------------------------------------------------------------------------ */
-body.art-tool { padding: 16px; }
-.art-controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
-.art-controls input[type=file] { display: none; }
-.art-controls .file { text-decoration: underline; cursor: pointer; }

@@ -11,6 +11,8 @@ import re
 from collections import Counter
 from fractions import Fraction
 
+from apge.art import PIXEL_CHARS as ART_CHARS
+
 # ---- balance knobs ----------------------------------------------------------------
 
 STARTING_CASH = 100
@@ -53,7 +55,7 @@ PALETTE = [
     '#000000', '#ffffff', '#8c8c8c', '#dc2828', '#28b450', '#3c78dc', '#ffdc00', '#785028',
     '#f5c9a0', '#c68642', '#8d5524', '#ff8c00', '#ff69b4', '#7b3fa0',
 ]
-PIXEL_CHARS = '0123456789abcdefghijklmnopqrstuvwxyz'[:len(PALETTE)]
+PIXEL_CHARS = ART_CHARS[:len(PALETTE)]   # the same format as the game art (apge.art)
 _HEAD_RE = re.compile('^[.%s]{%d}$' % (PIXEL_CHARS, HEAD_GRID * HEAD_GRID))
 BLANK_HEAD = '.' * (HEAD_GRID * HEAD_GRID)
 
@@ -342,6 +344,11 @@ SEASON = [
     {'kind': 'gamble', 'event': 'note', 'zone': 3, 'town': 'Sydney, AUS',
      'venue': 'Opera House', 'lat': -33.87, 'lon': 151.21},
 ]
+
+
+def venue_art(venue):
+    """Art id of a venue's picture (dev.ART lists one per venue)."""
+    return 'venue_' + re.sub(r'[^a-z0-9]+', '_', venue.lower()).strip('_')
 
 
 def stop_name(stop):

@@ -4,7 +4,6 @@ const {esc, head, dd, byId, ordinal, art, stopTitle} = Common;
 
 const $ = id => document.getElementById(id);
 let joinUrl = '';
-let phaseStarted = Date.now();
 let revealTimer = null;
 
 Stage.mount($('stage'));
@@ -12,7 +11,6 @@ apge.bindCountdown('timer');
 fetch('/apge-info').then(r => r.json()).then(info => { joinUrl = info.player_url; if (apge.view) render(apge.view); })
     .catch(() => {});
 
-apge.on('phase', () => { phaseStarted = Date.now(); });
 apge.on('state', render);
 
 function layout(name) {
@@ -57,7 +55,7 @@ const SCREENS = {
         fill(`
             <div class="lobby">
                 <div class="lobby-left">
-                    ${art(view.title, 'title-art')}
+                    ${art('title', 'title-art')}
                     <img class="qr" src="/apge-qr.png" alt="Scan to join">
                     <p class="url">${esc(joinUrl)}</p>
                 </div>
@@ -85,7 +83,7 @@ const SCREENS = {
             `<td class="odds">${odds[p.id].label}</td><td>${p.done ? '✓' : ''}</td></tr>`).join('');
         fill(`<div class="oddsbox"><h2>${esc(ev.name)} · Odds</h2><table>${rows}</table>
                 <p class="dim">Place your bets on your phone!</p></div>`,
-            `<div class="setup">${art(ev.venue)}<div><h2>${esc(ev.name)}</h2>
+            `<div class="setup">${art(ev.venue_art)}<div><h2>${esc(ev.name)}</h2>
                 <p>${esc(ev.venue)} · ${esc(ev.town)} · ${esc(ev.zone_name)}</p>
                 <p class="big">${esc(ev.setup)}</p>${ev.lowest_wins ? '<p class="gold">Lowest score wins!</p>' : ''}</div></div>`);
     },
@@ -95,7 +93,7 @@ const SCREENS = {
         const rows = view.data.frisks.map(f => `<div class="frisk"><h3>${esc(f.name)}</h3>` +
             (f.caught.length ? '<ul>' + f.caught.map(c => `<li>Confiscated: <b>${esc(c.item)}</b> on ${esc(c.target)}</li>`).join('') + '</ul>'
                 : '<p class="gold">Clean as a whistle.</p>') + '</div>').join('');
-        fill(`<div class="center">${art('Agent Kevin L. Peterson, Kangarules Gambling Commission', 'agent')}
+        fill(`<div class="center">${art('agent_kevin', 'agent')}
               <h2>Random frisk!</h2><div class="frisks">${rows}</div></div>`);
     },
 
@@ -126,7 +124,7 @@ const SCREENS = {
     purse(view) {
         layout('board');
         const r = view.rules.purse;
-        fill(`<div class="center">${art('a purse', 'prop')}<h1>Mother's Purse</h1>
+        fill(`<div class="center">${art('purse', 'prop')}<h1>Mother's Purse</h1>
             <p class="big">Players may either STEAL or DON'T STEAL out of your mother's purse.</p>
             <ul class="rules-list">
                 <li>If ALL players pick DON'T STEAL, then ALL players get ${dd(r.honest)}</li>
@@ -147,7 +145,7 @@ const SCREENS = {
     auction(view) {
         layout('board');
         const a = view.data.auction;
-        fill(`<div class="center">${art('Rugby Legends card pack', 'prop')}
+        fill(`<div class="center">${art('card_pack', 'prop')}
             <h1>Rugby Legends Trading Card Pack [Sealed] Auction</h1>
             <p class="huge" id="auction-clock"></p>
             <p class="big">Current Winner: <b>${a.leader_name ? esc(a.leader_name) : ''}</b></p>
@@ -174,7 +172,7 @@ const SCREENS = {
     case(view) {
         layout('board');
         const c = view.data.case, name = esc(c.holder_name);
-        fill(`<div class="center">${art('silver briefcase', 'prop')}<p class="huge gold">${dd(c.cash)}</p>
+        fill(`<div class="center">${art('briefcase', 'prop')}<p class="huge gold">${dd(c.cash)}</p>
             <p class="big">${name} has the case. Do the other players want to split <b>the CASE</b> (and ${name} gets ${dd(c.cash)})
             OR split <b>the ${dd(c.cash)} CASH</b> (and ${name} gets the case)?</p>
             <p class="dim">Only ${name} knows what's inside. Ask them. Trust them. Or don't.</p></div>`, progress(view, 'Voted'));
@@ -195,7 +193,7 @@ const SCREENS = {
     scalp(view) {
         layout('board');
         const s = view.data.scalp;
-        fill(`<div class="center">${art('a fistful of tickets', 'prop')}<h1>Tickets! Extra Tickets!</h1>
+        fill(`<div class="center">${art('tickets', 'prop')}<h1>Tickets! Extra Tickets!</h1>
             <p class="dim">Round ${s.round} of ${s.rounds}</p>
             <p class="huge gold">Face Value: ${dd(s.face)}</p>
             <p class="big">Lowest Bid gets sold! All ties forfeit sale.</p></div>`, progress(view, 'Priced'));
@@ -220,7 +218,7 @@ const SCREENS = {
 // collect, then the winner and awards.
 function renderFinal(view) {
     const f = view.data.final, players = byId(view), rules = view.rules;
-    const beat = Math.floor((Date.now() - phaseStarted) / 1000 / rules.final_reveal_seconds);
+    const beat = Math.floor((Date.now() - apge.phaseStarted) / 1000 / rules.final_reveal_seconds);
     const n = f.before.length;
     const row = (r, i, withDebt) => `<li>${head(players[r.id], rules, 40)} <b>${esc(r.name)}</b> ` +
         (withDebt ? `${dd(r.cash)} <span class="red">- ${dd(r.debt)} owed</span> = <b class="gold">${dd(r.final)}</b>`
@@ -231,7 +229,7 @@ function renderFinal(view) {
         html += '<h1>The season is over!</h1><p class="big">Final cash, from last place...</p><ol class="standings" reversed start="' + n + '">' +
             shown.map((r, i) => row(r, i, false)).join('') + '</ol>';
     } else {
-        html += (beat === n + 1 ? `${art('Shrimp and Barbie, dingo loansharks', 'prop')}<h1>But wait... Shrimp and Barbie want their money back!</h1>`
+        html += (beat === n + 1 ? `${art('loansharks', 'prop')}<h1>But wait... Shrimp and Barbie want their money back!</h1>`
             : `<h1>${f.winners.map(esc).join(' & ')} win${f.winners.length > 1 ? '' : 's'} the Derby!</h1>`) +
             '<ol class="standings">' + f.after.map((r, i) => row(r, i, true)).join('') + '</ol>';
         if (beat > n + 1) {

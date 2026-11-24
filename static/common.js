@@ -18,7 +18,7 @@ const Common = (function () {
         return `<img class="head ${cls || ''}" src="${url}" ${size} alt="">`;
     }
 
-    const dd = n => (n < 0 ? '-$Dd ' : '$Dd ') + Math.abs(n);
+    const dd = n => (n < 0 ? '-$Dd ' : '$Dd ') + Math.abs(n).toLocaleString('en-US');
     const signed = n => (n > 0 ? '+' : '') + dd(n);
 
     function byId(view) {
@@ -27,8 +27,22 @@ const Common = (function () {
         return m;
     }
 
-    /** Preview of a winning bet's return. Display only: the server pays with rules.payout. */
-    const winnings = (stake, odds) => stake + Math.floor(stake * odds.num / odds.den);
+    /** Preview of a winning bet's return, after the event winner's cut. Display only: the
+     * server pays with rules.payout. */
+    function winnings(stake, odds, rules) {
+        const won = Math.floor(stake * odds.num / odds.den);
+        return stake + won - Math.floor(won * rules.winner_cut_percent / 100);
+    }
+
+    /** Where the final-results reveal is up to. Beats 0..n show the standings from last place,
+     * then the loansharks collect, then the winner. Host and phones each pace it from when
+     * they saw game_over begin (phaseStarted), so phones keep their place secret until then. */
+    function finalReveal(view, phaseStarted) {
+        const n = view.data.final.before.length, ms = view.rules.final_reveal_seconds * 1000;
+        const elapsed = Date.now() - phaseStarted;
+        return {beat: Math.floor(elapsed / ms), n: n, loansharks: n + 1, winner: n + 2,
+                msToWinner: Math.max(0, (n + 2) * ms - elapsed)};
+    }
 
     function ordinal(n) {
         const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
@@ -50,5 +64,5 @@ const Common = (function () {
         return stop.kind === 'special' ? `★ Special Event: ${esc(stop.name)}` : `${esc(stop.venue)} · ${esc(stop.town)}`;
     }
 
-    return {esc, head, dd, signed, byId, winnings, ordinal, art, stopTitle};
+    return {esc, head, dd, signed, byId, winnings, finalReveal, ordinal, art, stopTitle};
 })();

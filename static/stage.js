@@ -49,7 +49,17 @@
     function loop(now) {
         if (current && W) {
             ctx.clearRect(0, 0, W, H);
-            try { current.fn(ctx, W, H, (now - started) / 1000); } catch (e) { console.error(e); current = null; }
+            // A frame's timestamp can be a hair EARLIER than the performance.now() a scene was
+            // started with, so the first frame's t could be negative. Sand Curling's turn index
+            // went to -1 on that frame, threw, and the animation vanished for the whole event.
+            const t = Math.max(0, (now - started) / 1000);
+            try {
+                current.fn(ctx, W, H, t);
+            } catch (e) {
+                // Keep drawing: one bad frame mustn't blank the TV for the rest of the event
+                if (!current.failed) console.error(e);
+                current.failed = true;
+            }
         }
         requestAnimationFrame(loop);
     }
@@ -327,7 +337,7 @@
         const prop = PROPS[ev.prop] || PROPS.kick;
 
         return function (c, w, h, t) {
-            const k = Math.min(turns.length - 1, Math.floor(t / TURN));
+            const k = Math.max(0, Math.min(turns.length - 1, Math.floor(t / TURN)));
             const u = Math.min(1, (t - k * TURN) / (TURN * 0.7));
             const id = turns[k], p = byId[id];
             const ground = h * 0.78, figH = Math.min(160, h * 0.3);
@@ -386,9 +396,9 @@
                 art(c, card.holo ? 'card_holo' : 'card', x, y, cw, ch, {color: card.holo ? 'rgba(255,205,0,0.35)' : 'rgba(255,255,255,0.12)'});
                 text(c, card.holo ? 'Holographic card reveal!' : card.name, x + cw / 2, y - 18, 13, {bold: card.holo, color: card.holo ? GOLD : INK});
                 if (card.holo) text(c, card.name, x + cw / 2, y + ch + 18, 13);
-                text(c, `Sell Value: $${card.value}`, x + cw / 2, y + ch + (card.holo ? 38 : 18), 15, {bold: true, color: GOLD});
+                text(c, `Sell Value: ${Common.dd(card.value)}`, x + cw / 2, y + ch + (card.holo ? 38 : 18), 15, {bold: true, color: GOLD});
             });
-            text(c, `Running total: $Dd ${total}`, w / 2, h * 0.15, 34, {bold: true, color: GOLD});
+            text(c, `Running total: ${Common.dd(total)}`, w / 2, h * 0.15, 34, {bold: true, color: GOLD});
         };
     }
 

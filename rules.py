@@ -21,7 +21,8 @@ MAX_STAT = SKILL_POINTS
 STATS = (('str', 'STRENGTH'), ('spd', 'SPEED'), ('mcr', 'MORAL COURAGE'))
 LUCK_LOW = 1
 LUCK_HIGH = 10
-MONEY_STEP = 10             # every +/- button moves money by this much
+MONEY_STEP = 10             # every +/- button moves money by this much (loans, ticket prices)
+BET_STEPS = (1, 10, 100)    # the betting slip and card auction let you pick the +/- size
 LOAN_MIN = 10
 LOAN_MULTIPLIER = 2         # the loansharks want DOUBLE back at the end
 MAX_NAME = 15
@@ -30,6 +31,8 @@ MAX_NAME = 15
 ODDS_SIMS = 100
 ODDS_MAX_DENOMINATOR = 10   # keep fractions readable: 97/3 ok, 33/17 -> nearest x/10
 ODDS_FLOOR = Fraction(1, 10)  # a sure thing still pays something
+ODDS_CEILING = Fraction(50, 1)  # longest odds offered (99-1 longshots plus kneecaps broke the bank)
+WINNER_CUT_PERCENT = 10     # the event's winner takes this share of every winning bet's winnings
 MAX_TIEBREAKS = 25          # re-rolls before a dead heat is settled by coin flip
 
 # ---- timers (seconds) -----------------------------------------------------------------
@@ -45,6 +48,7 @@ CASE_SECONDS = 60
 SCALP_SECONDS = 30
 SCALP_ROUNDS = 4
 FINAL_REVEAL_SECONDS = 4    # host pause per final-results beat (client-side pacing)
+TIMER_WARNING_SECONDS = 10  # the host timer turns red and beeps once at this many seconds left
 
 # ---- avatars -----------------------------------------------------------------------------
 
@@ -215,7 +219,7 @@ def odds_calc(stats, event_id, rng, sims=ODDS_SIMS):
     for pid in stats:
         w = max(1, wins[pid])   # never-won still gets (long) odds rather than infinity
         fair = Fraction(sims - w, w).limit_denominator(ODDS_MAX_DENOMINATOR)
-        odds[pid] = max(fair, ODDS_FLOOR)
+        odds[pid] = min(max(fair, ODDS_FLOOR), ODDS_CEILING)
     return odds
 
 
@@ -223,9 +227,16 @@ def odds_label(frac):
     return f'{frac.numerator}-{frac.denominator}'
 
 
+def winner_cut(stake, frac):
+    """The event winner's share of one winning bet: WINNER_CUT_PERCENT of its winnings."""
+    winnings = (stake * frac.numerator) // frac.denominator
+    return winnings * WINNER_CUT_PERCENT // 100
+
+
 def payout(stake, frac):
-    """Total returned on a winning bet: stake back plus winnings, rounded down."""
-    return stake + (stake * frac.numerator) // frac.denominator
+    """Total returned on a winning bet: stake back plus winnings (rounded down), less the event
+    winner's cut."""
+    return stake + (stake * frac.numerator) // frac.denominator - winner_cut(stake, frac)
 
 
 # ---- special events --------------------------------------------------------------------------------
@@ -251,9 +262,12 @@ def purse_payouts(choices):
 
 AUCTION_OPENING_BID = 10
 COMMON_CARDS = 5
-COMMON_CARD_VALUE = (1, 10)
+COMMON_CARD_VALUE = (10, 100)
 HOLO_CARD_NAME = 'Dally Messenger Rookie Card'
-HOLO_CARD_VALUE = (10, 200)
+HOLO_CARD_VALUE = (50, 2000)
+# What a sealed pack can be worth, shown while bidding
+CARD_PACK_VALUE = (COMMON_CARDS * COMMON_CARD_VALUE[0] + HOLO_CARD_VALUE[0],
+                   COMMON_CARDS * COMMON_CARD_VALUE[1] + HOLO_CARD_VALUE[1])
 
 
 def open_card_pack(rng):
@@ -309,9 +323,11 @@ def scalp_winner(asks):
     return None
 
 
-# ---- the season (critical path) -----------------------------------------------------------------------
-# One list, in order. Roguelike shuffling later just builds a different list.
-# lat/lon place the stop on the host map; specials sit between towns.
+# ---- the season --------------------------------------------------------------------------------------
+# Every play-through has the same shape (which stops are gambling events or specials, and each
+# stop's zone), filled with events drawn at random from the pools below, each at most once.
+# Adding events to a pool means some won't appear in a given season. A gambling event brings
+# its own town and venue; lat/lon place it on the host map, and specials sit between towns.
 
 SPECIALS = {
     'mothers_purse': "Mother's Purse",
@@ -320,30 +336,50 @@ SPECIALS = {
     'ticket_scalping': 'Ticket Scalping',
 }
 
-SEASON = [
-    {'kind': 'gamble', 'event': 'foot_race', 'zone': 1, 'town': 'Wanganui, NZ',
-     'venue': 'Wanganui Hockey Turf', 'lat': -39.93, 'lon': 175.05},
-    {'kind': 'special', 'event': 'mothers_purse', 'zone': 1},
-    {'kind': 'gamble', 'event': 'speed_hike', 'zone': 1, 'town': 'Hanmer Springs, NZ',
-     'venue': 'Conical Hill Walking Track', 'lat': -42.52, 'lon': 172.83},
-    {'kind': 'gamble', 'event': 'fist_fight', 'zone': 1, 'town': 'Queenstown, NZ',
-     'venue': 'Queenstown Hill Walking Track', 'lat': -45.03, 'lon': 168.66},
-    {'kind': 'special', 'event': 'card_auction', 'zone': 2},
-    {'kind': 'gamble', 'event': 'sand_curling', 'zone': 2, 'town': 'Dubbo, AUS',
-     'venue': 'Barden Park', 'lat': -32.25, 'lon': 148.60},
-    {'kind': 'gamble', 'event': 'mini_golf', 'zone': 2, 'town': 'Lightning Ridge, AUS',
+GAMBLE_STOPS = [
+    {'event': 'foot_race', 'town': 'Wanganui, NZ', 'venue': 'Wanganui Hockey Turf',
+     'lat': -39.93, 'lon': 175.05},
+    {'event': 'speed_hike', 'town': 'Hanmer Springs, NZ', 'venue': 'Conical Hill Walking Track',
+     'lat': -42.52, 'lon': 172.83},
+    {'event': 'fist_fight', 'town': 'Queenstown, NZ', 'venue': 'Queenstown Hill Walking Track',
+     'lat': -45.03, 'lon': 168.66},
+    {'event': 'sand_curling', 'town': 'Dubbo, AUS', 'venue': 'Barden Park',
+     'lat': -32.25, 'lon': 148.60},
+    {'event': 'mini_golf', 'town': 'Lightning Ridge, AUS',
      'venue': 'Peter Cookes Mini Golf & Sculpture Park', 'lat': -29.43, 'lon': 147.98},
-    {'kind': 'special', 'event': 'case_or_no_case', 'zone': 2},
-    {'kind': 'gamble', 'event': 'mascot_race', 'zone': 2, 'town': 'Adelaide, AUS',
-     'venue': 'Adelaide Oval', 'lat': -34.93, 'lon': 138.60},
-    {'kind': 'gamble', 'event': 'sumo', 'zone': 3, 'town': 'Melbourne, AUS',
-     'venue': 'Lakeside Stadium', 'lat': -37.81, 'lon': 144.96},
-    {'kind': 'special', 'event': 'ticket_scalping', 'zone': 3},
-    {'kind': 'gamble', 'event': 'half_court', 'zone': 3, 'town': 'Perth, AUS',
-     'venue': 'Optus Stadium', 'lat': -31.95, 'lon': 115.86},
-    {'kind': 'gamble', 'event': 'note', 'zone': 3, 'town': 'Sydney, AUS',
-     'venue': 'Opera House', 'lat': -33.87, 'lon': 151.21},
+    {'event': 'mascot_race', 'town': 'Adelaide, AUS', 'venue': 'Adelaide Oval',
+     'lat': -34.93, 'lon': 138.60},
+    {'event': 'sumo', 'town': 'Melbourne, AUS', 'venue': 'Lakeside Stadium',
+     'lat': -37.81, 'lon': 144.96},
+    {'event': 'half_court', 'town': 'Perth, AUS', 'venue': 'Optus Stadium',
+     'lat': -31.95, 'lon': 115.86},
+    {'event': 'note', 'town': 'Sydney, AUS', 'venue': 'Opera House',
+     'lat': -33.87, 'lon': 151.21},
 ]
+
+# (kind, zone) per stop: 13 stops, 9 gambling events and 4 specials
+SEASON_SHAPE = [
+    ('gamble', 1), ('special', 1), ('gamble', 1), ('gamble', 1),
+    ('special', 2), ('gamble', 2), ('gamble', 2), ('special', 2), ('gamble', 2),
+    ('gamble', 3), ('special', 3), ('gamble', 3), ('gamble', 3),
+]
+
+
+def build_season(rng=None):
+    """The season's stops, in order. With an rng, the events are a random draw from the pools;
+    without one, the pools in listed order (the design doc's route, for tests and samples)."""
+    def draw(pool, kind):
+        count = sum(1 for k, _ in SEASON_SHAPE if k == kind)
+        return iter(rng.sample(pool, count) if rng else pool[:count])
+    gambles = draw(GAMBLE_STOPS, 'gamble')
+    specials = draw(list(SPECIALS), 'special')
+    season = []
+    for kind, zone in SEASON_SHAPE:
+        if kind == 'gamble':
+            season.append(dict(next(gambles), kind=kind, zone=zone))
+        else:
+            season.append({'kind': kind, 'event': next(specials), 'zone': zone})
+    return season
 
 
 def venue_art(venue):
@@ -396,7 +432,8 @@ def client_rules():
         'purse': {'honest': PURSE_ALL_HONEST, 'thief': PURSE_LONE_THIEF},
         'case_cash': CASE_CASH, 'scalp_rounds': SCALP_ROUNDS,
         'scalp_max_multiplier': SCALP_MAX_MULTIPLIER, 'auction_opening_bid': AUCTION_OPENING_BID,
-        'final_reveal_seconds': FINAL_REVEAL_SECONDS,
+        'card_pack_value': list(CARD_PACK_VALUE), 'bet_steps': list(BET_STEPS),
+        'winner_cut_percent': WINNER_CUT_PERCENT, 'final_reveal_seconds': FINAL_REVEAL_SECONDS,
     }
 
 

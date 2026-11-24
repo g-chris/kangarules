@@ -1,11 +1,22 @@
 // Phone screen. Everything a player hasn't sent yet (bet slip, skill points, a picked
 // option) lives in `draft`, so state updates re-render freely without losing input.
 const apge = APGE.connect();
-const {esc, head, dd, signed, byId, winnings, art, stopTitle} = Common;
+const {esc, head, dd, signed, byId, winnings, finalReveal, art, stopTitle} = Common;
 const $ = id => document.getElementById(id);
 
 let pad = null;
 let draft = {key: null};
+let moneyStep = null;     // the +/- size picked on the betting slip / auction; kept between rounds
+let wakeTimer = null;
+
+/** Re-render at a set time (a reveal that happens without a state update). */
+function wakeIn(ms) {
+    clearTimeout(wakeTimer);
+    wakeTimer = setTimeout(rerender, ms);
+}
+
+const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+const sum = obj => Object.values(obj).reduce((a, b) => a + b, 0);
 
 apge.mountJoinForm('join-form', {placeholder: 'Your name', button: 'Join'});
 
@@ -34,6 +45,37 @@ const stepper = (act, value, label, extra) =>
     `<div class="stepper"><button class="step" data-act="${act}" data-dir="-1" ${extra || ''}>−</button>` +
     `<span class="value">${label !== undefined ? label : value}</span>` +
     `<button class="step" data-act="${act}" data-dir="1" ${extra || ''}>+</button></div>`;
+
+/** The +/- size buttons under a money counter. */
+function stepPicker(rules) {
+    if (!rules.bet_steps.includes(moneyStep)) moneyStep = rules.money_step;
+    return '<div class="steps"><span class="dim">+/− by</span>' + rules.bet_steps.map(s =>
+        `<button class="stepsize ${s === moneyStep ? 'on' : ''}" data-act="step-size" data-step="${s}">${dd(s)}</button>`).join('') + '</div>';
+}
+
+const nameOf = (view, id) => (byId(view)[id] || {name: '?'}).name;
+
+/** What I've bet on this event, so I know who to cheer for. */
+function myBets(view, me) {
+    const odds = view.data.odds, placed = Object.entries(me.private.bets || {});
+    if (!placed.length) return '<p>No bets this time. Very wise. Or very boring.</p>';
+    return '<h3>Your bets</h3><ul class="choices mine">' + placed.map(([pid, amt]) =>
+        `<li>${head(byId(view)[pid], view.rules, 28)} <b>${esc(nameOf(view, pid))}</b>: ${dd(amt)} at ${odds[pid].label}` +
+        ` <span class="dim">→ wins ${dd(winnings(amt, odds[pid], view.rules))}</span></li>`).join('') + '</ul>';
+}
+
+/** What I bought from the Shady Koala this event (confiscated if I was frisked). */
+function myKoala(view, me) {
+    const koala = me.private.koala, bought = koala ? Object.entries(koala.bought) : [];
+    if (!bought.length) return '';
+    const frisk = (view.data.frisks || []).find(f => f.id === me.id);
+    const caught = frisk && frisk.caught.length ? ' <span class="red">(confiscated)</span>' : '';
+    const items = view.rules.koala_items;
+    return '<h3>Your Shady Koala purchases</h3><ul class="choices mine">' + bought.map(([id, target]) =>
+        `<li><b>${esc(items.find(i => i.id === id).name)}</b> → ${esc(nameOf(view, target))}${caught}</li>`).join('') + '</ul>';
+}
+
+const watchMyRound = (view, me, line) => watch(view, line) + `<div class="center">${myBets(view, me)}${myKoala(view, me)}</div>`;
 
 const continueButton = me => me.ready
     ? '<p class="done">Waiting for everyone else...</p>'
@@ -90,28 +132,30 @@ function bet(view, me, d) {
     d.bets = d.bets || {};
     const ev = view.data.event;
     if (me.done) {
-        const placed = Object.entries(priv.bets || {});
-        return `<div class="center"><h2>Bets locked in!</h2>` + (placed.length
-            ? '<ul class="choices">' + placed.map(([pid, amt]) => `<li>${esc(byId(view)[pid].name)}: ${dd(amt)} at ${odds[pid].label}</li>`).join('') + '</ul>'
-            : '<p>No bets this time. Very wise. Or very boring.</p>') + '<p class="dim">Watch the big screen...</p></div>';
+        return `<div class="center"><h2>Bets locked in!</h2>${myBets(view, me)}${myKoala(view, me)}
+            <p class="dim">Watch the big screen...</p></div>`;
     }
-    // Koala purchases can shrink your cash after you've filled in the slip
-    let total = Object.values(d.bets).reduce((a, b) => a + b, 0);
-    while (total > priv.cash) {
-        const top = Object.keys(d.bets).find(k => d.bets[k] > 0);
-        d.bets[top] -= rules.money_step;
-        total -= rules.money_step;
-    }
+    // Koala purchases can shrink your cash after you've filled in the slip: trim the bets to fit
+    let excess = sum(d.bets) - priv.cash;
+    Object.keys(d.bets).forEach(k => {
+        const cut = Math.min(Math.max(0, excess), d.bets[k]);
+        d.bets[k] -= cut;
+        excess -= cut;
+    });
+    const total = sum(d.bets);
     const lines = view.players.map(p => {
         const stake = d.bets[p.id] || 0;
         return `<div class="betline">${head(p, rules, 44)}<div class="who"><b>${esc(p.name)}</b><small>${odds[p.id].label}</small></div>
             ${stepper('bet', stake, dd(stake), `data-id="${p.id}"`)}
-            <div class="help">${stake ? `(On win: ${dd(winnings(stake, odds[p.id]))})` : ''}</div></div>`;
+            <div class="help">${stake ? `(On win: ${dd(winnings(stake, odds[p.id], rules))})` : ''}</div></div>`;
     }).join('');
     const canBorrow = priv.cash < rules.starting_cash;
+    const koala = myKoala(view, me);
     return `<h2 class="center">${esc(ev.name)}</h2><p class="center dim">${esc(ev.venue)}</p>
         <div class="slip">${lines}</div>
+        ${stepPicker(rules)}
         <p class="center">Betting ${dd(total)} of ${dd(priv.cash)}</p>
+        ${koala ? `<div class="center">${koala}</div>` : ''}
         <div class="loan-slot">${canBorrow ? '<button class="apge-button wide shark" data-act="loan-open">LOANSHARK</button>' : ''}</div>
         <button class="apge-button wide" data-act="confirm-bets">Confirm</button>`;
 }
@@ -174,10 +218,13 @@ function auction(view, me, d) {
     const lowest = a.leader ? a.high_bid + rules.money_step : rules.auction_opening_bid;
     if (!d.bid || d.bid < lowest) d.bid = lowest;
     const leading = a.leader === me.id;
+    const [lo, hi] = rules.card_pack_value;
     return `<div class="center"><h2>Card Pack Auction</h2>
+        <p>Estimated value: <b class="gold">${dd(lo)} – ${dd(hi)}</b></p>
         <p class="big">High bid: <b class="gold">${dd(a.high_bid || rules.auction_opening_bid)}</b>${a.leader_name ? ' by ' + esc(a.leader_name) : ''}</p>
         ${leading ? '<p class="done big">You\'re winning!</p>' : `
         ${stepper('bid', d.bid, dd(d.bid))}
+        ${stepPicker(rules)}
         <button class="apge-button wide" data-act="place-bid" ${d.bid > cash ? 'disabled' : ''}>Bid ${dd(d.bid)}</button>
         ${lowest > cash ? '<p class="dim">You can\'t afford to raise.</p>' : ''}`}
         <p class="dim">You have ${dd(cash)}</p></div>`;
@@ -207,6 +254,13 @@ function scalp(view, me, d) {
         <button class="apge-button wide" data-act="submit-price">Submit</button></div>`;
 }
 
+function payoutScreen(view, me) {
+    const pay = view.data.payout, w = byId(view)[pay.winner];
+    const cut = pay.winner === me.id && pay.winner_cut
+        ? `<p class="big">Winner's cut of the winning bets: <b class="gold">${signed(pay.winner_cut)}</b></p>` : '';
+    return result(view, me, `${esc(w ? w.name : '?')} wins!`, cut);
+}
+
 function result(view, me, title, body) {
     const last = me.private.last;
     return `<div class="center"><h2>${title}</h2>${body || ''}
@@ -216,6 +270,12 @@ function result(view, me, title, body) {
 
 function final(view, me) {
     const f = view.data.final;
+    // Your place would spoil the big screen's reveal: hold it until the winner is announced
+    const reveal = finalReveal(view, apge.phaseStarted);
+    if (reveal.beat < reveal.winner) {
+        wakeIn(reveal.msToWinner + 100);
+        return watch(view, 'The final results are on the big screen!');
+    }
     const place = f.after.findIndex(r => r.id === me.id);
     const mine = f.after[place];
     let html = `<div class="center"><h2>Season over!</h2>` + (mine ? `<p class="big">${Common.ordinal(place + 1)} place</p>
@@ -230,12 +290,9 @@ function final(view, me) {
 const SCREENS = {
     map: view => watch(view, 'On the road...'),
     bet: bet,
-    frisk: view => watch(view, 'The Kangarules Gambling Commission is frisking someone...'),
-    perform: view => watch(view),
-    payout: (view, me) => {
-        const w = byId(view)[view.data.payout.winner];
-        return result(view, me, `${esc(w.name)} wins!`);
-    },
+    frisk: (view, me) => watchMyRound(view, me, 'The Kangarules Gambling Commission is frisking someone...'),
+    perform: (view, me) => watchMyRound(view, me),
+    payout: payoutScreen,
     purse: purse,
     purse_result: (view, me) => result(view, me, "Mother's Purse"),
     auction: auction,
@@ -264,11 +321,12 @@ const ACTS = {
         apge.start();
     },
     bet(b, view) {
-        const step = view.rules.money_step * Number(b.dataset.dir), id = b.dataset.id;
-        const total = Object.values(draft.bets).reduce((a, c) => a + c, 0);
-        const next = (draft.bets[id] || 0) + step;
-        if (next >= 0 && (step < 0 || total + step <= view.me.private.cash)) draft.bets[id] = next;
+        // A big step that doesn't fit stops at what's left (or at zero) instead of doing nothing
+        const id = b.dataset.id, stake = draft.bets[id] || 0;
+        const room = view.me.private.cash - sum(draft.bets);
+        draft.bets[id] = clamp(stake + moneyStep * Number(b.dataset.dir), 0, stake + Math.max(0, room));
     },
+    'step-size': b => { moneyStep = Number(b.dataset.step); },
     'confirm-bets': () => send('confirm_bets', {bets: draft.bets}),
     'loan-open': () => { draft.loanOpen = true; },
     'loan-close': () => { draft.loanOpen = false; },
@@ -288,10 +346,9 @@ const ACTS = {
         if (view.phase === 'case') send('case_vote', {vote: draft.pick});
     },
     bid(b, view) {
-        const next = draft.bid + view.rules.money_step * Number(b.dataset.dir);
-        const a = view.data.auction;
+        const a = view.data.auction, cash = view.me.private.cash;
         const lowest = a.leader ? a.high_bid + view.rules.money_step : view.rules.auction_opening_bid;
-        if (next >= lowest && next <= view.me.private.cash) draft.bid = next;
+        draft.bid = clamp(draft.bid + moneyStep * Number(b.dataset.dir), lowest, Math.max(lowest, cash));
     },
     'place-bid': () => send('bid', {amount: draft.bid}),
     price(b, view) {

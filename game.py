@@ -1,7 +1,7 @@
 """
 Down Under Gambler's Sweat It Out! Derby '27 - phases and actions.
 
-Flow (one SEASON stop at a time, see rules.py):
+Flow (one season stop at a time; rules.build_season shuffles the stops each game):
 
     lobby (draw head, spend skill points) -> map -> stop -> map -> stop ... -> game_over
 
@@ -34,6 +34,9 @@ FINISH_WHEN_ALL_DONE = {
     'scalp': 'finish_scalp',
 }
 
+# Nobody is choosing anything here, so the host timer never warns (no red, no beep)
+WATCH_PHASES = ('map', 'frisk', 'perform', 'auction_open')
+
 SPECIAL_FIRST_PHASE = {
     'mothers_purse': 'purse',
     'card_auction': 'auction',
@@ -49,12 +52,12 @@ def whole(value, lo, hi, what):
     return value
 
 
-def money(value, lo, hi, what):
+def money(value, lo, hi, what, step=R.MONEY_STEP):
     if hi < lo:
         raise Reject(f"You can't afford that {what.lower()}.")
     amount = whole(value, lo, hi, what)
-    if amount % R.MONEY_STEP:
-        raise Reject(f'{what} goes up in steps of {R.MONEY_STEP}.')
+    if amount % step:
+        raise Reject(f'{what} goes up in steps of {step}.')
     return amount
 
 
@@ -88,6 +91,7 @@ class Derby(Game):
     def public_view(self):
         view = super().public_view()
         view['rules'] = R.client_rules()
+        view['timer_warning'] = None if self.phase in WATCH_PHASES else R.TIMER_WARNING_SECONDS
         return view
 
     # ---- lobby: character creation ------------------------------------------------
@@ -134,7 +138,7 @@ class Derby(Game):
                 p.public['character_done'] = True
                 self.finish_order.append(p.id)
             p.private.update(cash=R.STARTING_CASH, borrowed=0, bets_won=0, money_lost=0)
-        self.season = list(R.SEASON)
+        self.season = R.build_season(self.rng)
         self.public['season'] = R.season_map(self.season)
         self.public['stop'] = -1
         self.next_stop()
@@ -298,7 +302,7 @@ class Derby(Game):
         bets = {}
         for pid, amount in slip.items():
             choice(pid, self.players, 'players who are racing')
-            amount = money(amount, 0, cash, 'Bet')
+            amount = money(amount, 0, cash, 'Bet', step=1)
             if amount:
                 bets[pid] = amount
         if sum(bets.values()) > cash:
@@ -360,7 +364,7 @@ class Derby(Game):
     def enter_payout(self):
         winner = self.outcome['order'][0]
         odds = self.odds[winner]
-        winning = []
+        winning, cut = [], 0
         for p in self.players.values():
             bets = p.private.get('bets', {})
             lost = sum(amount for pid, amount in bets.items() if pid != winner)
@@ -368,10 +372,16 @@ class Derby(Game):
             won = R.payout(bets[winner], odds) if winner in bets else 0
             if won:
                 p.private['bets_won'] += 1
+                cut += R.winner_cut(bets[winner], odds)
                 winning.append({'id': p.id, 'name': p.name, 'stake': bets[winner], 'payout': won})
             self.credit(p, won, net=won - sum(bets.values()))
+        # The event's winner takes their cut of every winning bet (their own included)
+        champ = self.players.get(winner)
+        if champ:
+            self.credit(champ, cut, net=champ.private['last'] + cut)
         self.public['payout'] = {'winner': winner, 'odds': R.odds_label(odds),
-                                 'order': self.outcome['order'], 'winning_bets': winning}
+                                 'order': self.outcome['order'], 'winning_bets': winning,
+                                 'winner_cut': cut}
 
     @on_all_ready('payout')
     def payout_done(self):
@@ -431,7 +441,7 @@ class Derby(Game):
             raise Reject("You're already the high bidder.")
         lowest = (R.AUCTION_OPENING_BID if auction['leader'] is None
                   else auction['high_bid'] + R.MONEY_STEP)
-        amount = money(data.get('amount'), lowest, player.private['cash'], 'Bid')
+        amount = money(data.get('amount'), lowest, player.private['cash'], 'Bid', step=1)
         auction.update(high_bid=amount, leader=player.id, leader_name=player.name)
 
     @on_timeout('auction')

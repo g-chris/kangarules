@@ -28,9 +28,6 @@ class DerbyBot(Bot):
         handler = getattr(self, 'play_' + phase, None)
         return handler(view, me, private, data) if handler else None
 
-    def money_up_to(self, cap):
-        return self.rng.randrange(0, max(0, cap) // STEP + 1) * STEP
-
     def play_lobby(self, view, me, private, data):
         if 'head' not in me:
             art = ''.join(self.rng.choice('.' + R.PIXEL_CHARS) for _ in range(R.HEAD_GRID ** 2))
@@ -61,7 +58,8 @@ class DerbyBot(Bot):
         bets, left = {}, private['cash']
         for pid in others:
             if self.rng.random() < 0.5:
-                bets[pid] = self.money_up_to(left // 2)
+                # Bets go in any whole amount (the slip's 1 / 10 / 100 step buttons)
+                bets[pid] = self.rng.randint(0, max(0, left // 2))
                 left -= bets[pid]
         return [('confirm_bets', {'bets': bets})]
 
@@ -73,7 +71,8 @@ class DerbyBot(Bot):
         auction = data['auction']
         if auction['leader'] == me['id'] or self.rng.random() < 0.5:
             return None
-        bid = (auction['high_bid'] or 0) + STEP
+        lowest = R.AUCTION_OPENING_BID if auction['leader'] is None else auction['high_bid'] + STEP
+        bid = lowest + self.rng.choice([0, 1, 7, 100])
         if bid <= private['cash']:
             return [('bid', {'amount': bid})]
 
@@ -96,7 +95,7 @@ def invariant(game):
         if 'stats' in private:
             assert sum(private['stats'].values()) <= R.SKILL_POINTS, f'{p.name} has too many points'
         for pid, amount in private.get('bets', {}).items():
-            assert pid in game.players and amount > 0 and amount % STEP == 0, f'bad bet {amount}'
+            assert pid in game.players and isinstance(amount, int) and amount > 0, f'bad bet {amount}'
     # Hidden information must never reach the public state
     for key in ('cash', 'stats', 'bets', 'borrowed', 'koala', 'case_value'):
         for p in game.players.values():

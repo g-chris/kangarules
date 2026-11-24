@@ -1,1 +1,1 @@
-apge @ git+https://github.com/g-chris/apge@v0.3.0
+apge @ git+https://github.com/g-chris/apge@v0.4.0

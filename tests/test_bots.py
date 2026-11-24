@@ -47,14 +47,13 @@ class DerbyBot(Bot):
             return [('koala_open', {})]
         if koala and koala['state'] == 'open':
             unbought = [i for i in R.KOALA_ITEMS if i['id'] not in koala['bought']
-                        and i['price'] <= private['cash']]
+                        and koala['prices'][i['id']] <= private['cash']]
             if unbought and self.rng.random() < 0.6:
                 item = self.rng.choice(unbought)
                 return [('koala_buy', {'item': item['id'], 'target': self.rng.choice(others)})]
             return [('koala_exit', {})]
-        if private['cash'] < R.STARTING_CASH and self.rng.random() < 0.3:
-            amount = self.rng.randrange(R.LOAN_MIN, R.STARTING_CASH + 1, STEP)
-            return [('borrow', {'amount': amount})]
+        if not private.get('loan_taken') and self.rng.random() < 0.15:
+            return [('borrow', {})]   # always LOAN_AMOUNT, once per event
         bets, left = {}, private['cash']
         for pid in others:
             if self.rng.random() < 0.5:

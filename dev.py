@@ -103,7 +103,8 @@ def performing(event):
 def my_purchases(game):
     """The phone's player (the first) meets the Shady Koala and buys two things."""
     me, other = players(game)[:2]
-    me.private['koala'] = {'state': 'open', 'bought': {}}
+    me.private['koala'] = {'state': 'pending', 'bought': {}}
+    act(game, me, 'koala_open', {})   # sets the prices
     act(game, me, 'koala_buy', {'item': 'kneecaps', 'target': other.id})
     act(game, me, 'koala_buy', {'item': 'bribe', 'target': me.id})
     act(game, me, 'koala_exit', {})
@@ -180,8 +181,9 @@ def case_votes(game):
 
 
 def scalp_asks(game):
-    for p, price in zip(players(game), (20, 30, 30, 50)):
-        act(game, p, 'scalp_ask', {'price': price})
+    face = game.public['scalp']['face']
+    for p, under in zip(players(game), (50, 30, 30, 0)):   # two matching asks cancel out
+        act(game, p, 'scalp_ask', {'price': face - under})
 
 
 def game_over(game):
@@ -208,7 +210,9 @@ def case_voter(game):
 def koala_open(game):
     betting('foot_race')(game)
     me = players(game)[0]
-    me.private['koala'] = {'state': 'open', 'bought': {}}
+    me.private['cash'] = 240   # prices are a percent of cash: kneecaps $Dd 36
+    me.private['koala'] = {'state': 'pending', 'bought': {}}
+    act(game, me, 'koala_open', {})
 
 
 N = 4   # sample players per screen (Screen's default)

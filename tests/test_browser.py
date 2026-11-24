@@ -116,6 +116,29 @@ def main(shots=None):
         time.sleep(0.5)
         check.shot(phones[0], 'phone-draw')
 
+        # The playtest's phantom players: Kylie's phone opens a fresh tab and joins as someone
+        # else, then the old tab goes away. The old Kylie must not stay in the game
+        fresh = phones[2].context.new_page()
+        check.watch(fresh, 'Kylie (new tab)')
+        fresh.goto(url + '/player')
+        fresh.fill('#join-form input', 'Kyles')
+        fresh.click('#join-form button')
+        time.sleep(0.4)
+        phones[2].close()
+        phones[2] = fresh
+        time.sleep(0.6)
+        names = sorted(p.name for p in game.players.values())
+        assert names == ['Davo', 'Kyles', 'Shazza'], f'phantom player left behind: {names}'
+        # ...and then changes her name back with the header's Change name button
+        tap(fresh, '[data-act=rename-open]')
+        fresh.fill('#rename-input', 'Kylie')
+        check.shot(fresh, 'phone-rename')
+        tap(fresh, '[data-act=rename-save]')
+        time.sleep(0.3)
+        assert sorted(p.name for p in game.players.values()) == sorted(NAMES), 'rename failed'
+        assert 'Kylie' in fresh.inner_text('#me'), 'phone header still shows the old name'
+        assert fresh.locator('#rename-input').count() == 0, 'rename sheet did not close'
+
         # Character creation: draw a few pixels, then spend points (different builds)
         builds = [{'spd': 6, 'str': 2, 'mcr': 2}, {'str': 5, 'mcr': 5}, {'mcr': 4, 'spd': 3}]
         for i, page in enumerate(phones):
@@ -142,18 +165,27 @@ def main(shots=None):
         tap(phones[0], '[data-act=start]')
         wait_phase(game, 'map')
         use_design_doc_route(game)
+        # Shazza leads and Kylie trails, so the Koala never visits Shazza and always visits Kylie
+        with game.lock:
+            for name, cash in zip(NAMES, (150, 100, 60)):
+                game.player_by_name(name).private['cash'] = cash
         check.shot(host, 'host-map')
         wait_phase(game, 'bet')
         check.shot(host, 'host-odds')
-        visited = [p for p in phones if p.locator('.psst').count()]
-        assert len(visited) == R.ZONES[1]['koala_visits'], 'zone 1 should send exactly one Psst'
+        assert phones[0].locator('.psst').count() == 0, 'the leader got a Shady Koala visit'
+        assert phones[2].locator('.psst').count() == 1, 'last place got no Shady Koala visit'
+        visited = [phones[2]]
         check.shot(visited[0], 'phone-psst')
         tap(visited[0], '.psst')
         check.shot(visited[0], 'phone-koala')
+        assert '$Dd 9' in visited[0].inner_text('.sheet'), 'kneecaps should cost 15% of $Dd 60'
         tap(visited[0], '[data-act=koala-item][data-item=hgh]')
         tap(visited[0], '[data-act=koala-target]', 0)
         tap(visited[0], '[data-act=koala-exit]')
         assert 'HGH Injection' in visited[0].inner_text('#screen'), 'koala purchase not on the slip'
+        if phones[1].locator('.psst').count():   # Davo, in the middle, gets a coin flip
+            tap(phones[1], '.psst')
+            tap(phones[1], '[data-act=koala-exit]')
         for i, page in enumerate(phones):
             if i == 2:
                 tap(page, '[data-act=step-size][data-step="1"]')   # bet in ones
@@ -204,11 +236,7 @@ def main(shots=None):
         assert host.locator('#sound').is_hidden(), 'sound hint still up after a click'
         check.shot(host, 'host-timer-warning')
 
-        # A loan: spend down below starting cash, then visit the loansharks next betting round
-        with game.lock:
-            game.players[game.finish_order[1]].private['cash'] = 40
-            game.mark_dirty()
-            game._flush()
+        # A loan: always on offer, a fixed amount, once per betting event
         jump_to(game, STOP['fist_fight'])   # elimination animation, zone 1
         wait_phase(game, 'bet')
         shark_phone = phones[1]
@@ -216,10 +244,10 @@ def main(shots=None):
             tap(shark_phone, '.psst')
             tap(shark_phone, '[data-act=koala-exit]')
         tap(shark_phone, '[data-act=loan-open]')
-        tap(shark_phone, '[data-act=loan][data-dir="1"]')
         check.shot(shark_phone, 'phone-loanshark')
         tap(shark_phone, '[data-act=borrow]')
-        assert game.players[game.finish_order[1]].private['borrowed'] == 20, 'loan not recorded'
+        assert game.players[game.finish_order[1]].private['borrowed'] == R.LOAN_AMOUNT, 'loan not recorded'
+        assert shark_phone.locator('[data-act=loan-open]').count() == 0, 'second loan offered this event'
         skip(game)
         wait_phase(game, 'perform')
         time.sleep(5)
@@ -278,10 +306,16 @@ def main(shots=None):
         jump_to(game, STOP['ticket_scalping'])
         wait_phase(game, 'scalp')
         check.shot(host, 'host-scalp')
+        face = game.public['scalp']['face']
         for i, page in enumerate(phones):
+            if i == 2:
+                tap(page, '[data-act=step-size][data-kind=scalp][data-step="100"]')
             for _ in range(i):
                 tap(page, '[data-act=price][data-dir="-1"]')
             tap(page, '[data-act=submit-price]')
+        asks = [game.player_by_name(n).private.get('ask') for n in NAMES]
+        lowest = R.MONEY_STEP   # a big step down stops at the lowest ask instead of going under
+        assert asks == [face, face - 10, max(lowest, face - 200)], f'scalp step buttons asked wrong: {asks}'
         wait_phase(game, 'scalp_result')
         check.shot(host, 'host-scalp-result')
 

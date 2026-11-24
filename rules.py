@@ -23,7 +23,7 @@ LUCK_LOW = 1
 LUCK_HIGH = 10
 MONEY_STEP = 10             # every +/- button moves money by this much (loans, ticket prices)
 BET_STEPS = (1, 10, 100)    # the betting slip and card auction let you pick the +/- size
-LOAN_MIN = 10
+LOAN_AMOUNT = 5000          # the loansharks lend this much, take it or leave it, once per event
 LOAN_MULTIPLIER = 2         # the loansharks want DOUBLE back at the end
 MAX_NAME = 15
 
@@ -42,7 +42,7 @@ BET_SECONDS = 75
 FRISK_SECONDS = 8
 RESULTS_SECONDS = 30        # Continue screens
 PURSE_SECONDS = 45
-AUCTION_SECONDS = 60
+AUCTION_SECONDS = 30
 CARD_REVEAL_SECONDS = 16
 CASE_SECONDS = 60
 SCALP_SECONDS = 30
@@ -70,26 +70,50 @@ def valid_head(art):
 
 # ---- zones --------------------------------------------------------------------------------
 
-# koala_visits: players visited by the Shady Koala per gambling event (None = everyone)
 # frisks: players frisked by the Kangarules Gambling Commission per gambling event
+# (who the Shady Koala visits doesn't depend on the zone: see koala_visitors)
 ZONES = {
-    1: {'name': 'Youth Tournament', 'koala_visits': 1, 'frisks': 0},
-    2: {'name': 'Minor Leagues', 'koala_visits': 2, 'frisks': 1},
-    3: {'name': 'Professional Stadium', 'koala_visits': None, 'frisks': 1},
+    1: {'name': 'Youth Tournament', 'frisks': 0},
+    2: {'name': 'Minor Leagues', 'frisks': 1},
+    3: {'name': 'Professional Stadium', 'frisks': 1},
 }
 
 # ---- Shady Koala ("Shenanigans") ------------------------------------------------------------
 
+# Prices are a percent of the buyer's cash, so the Koala is cheap for whoever is behind
 KOALA_ITEMS = [
-    {'id': 'kneecaps', 'name': 'Bat to Kneecaps', 'price': 50,
+    {'id': 'kneecaps', 'name': 'Bat to Kneecaps', 'percent': 15,
      'effect': "Pick a player to reduce their SPD to 0 for the next event"},
-    {'id': 'hgh', 'name': 'HGH Injection', 'price': 30,
+    {'id': 'hgh', 'name': 'HGH Injection', 'percent': 10,
      'effect': "Pick a player to add 5 to SPD and 5 to STR for the next event"},
-    {'id': 'bribe', 'name': 'Bribe the Feds', 'price': 10,
+    {'id': 'bribe', 'name': 'Bribe the Feds', 'percent': 5,
      'effect': "Pick a player for the Kangarules agent to watch: all Shady Koala effects "
                "on that player are negated for the next event"},
 ]
 KOALA_BY_ID = {item['id']: item for item in KOALA_ITEMS}
+KOALA_MIN_PRICE = 1         # nothing is free, even when you're nearly broke
+KOALA_CHANCE = 0.5          # chance of a visit for anyone who isn't 1st or last
+
+
+def koala_prices(cash):
+    """What each item costs a buyer holding `cash` (rounded down to whole $Dd)."""
+    return {item['id']: max(KOALA_MIN_PRICE, cash * item['percent'] // 100) for item in KOALA_ITEMS}
+
+
+def koala_visitors(cash, rng):
+    """Who the Shady Koala visits this event. cash: {player_id: cash in hand}.
+
+    1st place never, last place always, everyone else on a KOALA_CHANCE coin flip. Ties share
+    the place; when everyone is level (the first event) nobody is 1st or last, so all flip.
+    """
+    top, bottom = max(cash.values()), min(cash.values())
+    visitors = set()
+    for pid, amount in cash.items():
+        if top != bottom and amount == top:
+            continue
+        if (top != bottom and amount == bottom) or rng.random() < KOALA_CHANCE:
+            visitors.add(pid)
+    return visitors
 HGH_BOOST = 5
 
 
@@ -241,8 +265,9 @@ def payout(stake, frac):
 
 # ---- special events --------------------------------------------------------------------------------
 
-PURSE_ALL_HONEST = 20     # everyone DON'T STEAL: each gets this
-PURSE_LONE_THIEF = 100    # exactly one STEAL: they get this
+PURSE_ALL_HONEST = 200    # everyone DON'T STEAL: each gets this
+PURSE_LONE_THIEF = 1000   # exactly one STEAL: they get the whole purse
+PURSE_PENALTY_PERCENT = 25   # more than one STEAL: EVERYONE loses this share of their cash
 MCR_TO_CHOOSE = 2         # MCR must be ABOVE this to choose; otherwise you STEAL
 
 
@@ -250,14 +275,15 @@ def can_choose_morally(stats):
     return stats['mcr'] > MCR_TO_CHOOSE
 
 
-def purse_payouts(choices):
-    """choices: {pid: 'steal'|'dont'} -> {pid: winnings}."""
+def purse_payouts(choices, cash):
+    """choices: {pid: 'steal'|'dont'}, cash: {pid: cash in hand} -> {pid: winnings}. When more
+    than one player steals, everyone pays PURSE_PENALTY_PERCENT of their cash (rounded down)."""
     thieves = [p for p, c in choices.items() if c == 'steal']
     if not thieves:
         return {p: PURSE_ALL_HONEST for p in choices}
     if len(thieves) == 1:
         return {p: (PURSE_LONE_THIEF if p == thieves[0] else 0) for p in choices}
-    return {p: 0 for p in choices}
+    return {p: -(cash[p] * PURSE_PENALTY_PERCENT // 100) for p in choices}
 
 
 AUCTION_OPENING_BID = 10
@@ -277,8 +303,8 @@ def open_card_pack(rng):
     return cards
 
 
-CASE_VALUE = (10, 300)
-CASE_CASH = 100
+CASE_VALUE = (500, 10000)   # never shown to players: only the holder knows what's inside
+CASE_CASH = 250             # "the CASH": this much for each voter (or for the holder)
 
 
 def case_holder(stats, rng):
@@ -296,16 +322,18 @@ def case_decision(votes, rng):
 
 
 def case_payouts(holder, voters, value, decision):
-    """CASE: voters split the case, holder gets the cash. CASH: voters split the cash, holder
-    gets the case. Splits round down to whole $Dd."""
-    share_pot, holder_gets = (value, CASE_CASH) if decision == 'case' else (CASE_CASH, value)
-    share = share_pot // len(voters) if voters else 0
+    """CASE: voters split the case (rounded down) and the holder gets CASE_CASH. CASH: every
+    voter gets CASE_CASH and the holder gets the case."""
+    if decision == 'case':
+        share, holder_gets = (value // len(voters) if voters else 0), CASE_CASH
+    else:
+        share, holder_gets = CASE_CASH, value
     result = {p: share for p in voters}
     result[holder] = holder_gets
     return result
 
 
-SCALP_FACE_VALUE = (10, 250)
+SCALP_FACE_VALUE = (150, 1500)
 SCALP_MAX_MULTIPLIER = 2   # asks can go up to twice face value
 
 
@@ -426,10 +454,12 @@ def client_rules():
     return {
         'starting_cash': STARTING_CASH, 'skill_points': SKILL_POINTS, 'max_stat': MAX_STAT,
         'stats': [{'id': k, 'label': v} for k, v in STATS],
-        'money_step': MONEY_STEP, 'loan_min': LOAN_MIN, 'loan_multiplier': LOAN_MULTIPLIER,
+        'money_step': MONEY_STEP, 'loan_amount': LOAN_AMOUNT, 'loan_multiplier': LOAN_MULTIPLIER,
         'head_grid': HEAD_GRID, 'palette': PALETTE, 'pixel_chars': PIXEL_CHARS,
         'koala_items': KOALA_ITEMS, 'mcr_to_choose': MCR_TO_CHOOSE,
-        'purse': {'honest': PURSE_ALL_HONEST, 'thief': PURSE_LONE_THIEF},
+        'purse': {'honest': PURSE_ALL_HONEST, 'thief': PURSE_LONE_THIEF,
+                  'penalty_percent': PURSE_PENALTY_PERCENT},
+        'scalp_steps': [MONEY_STEP, 100],
         'case_cash': CASE_CASH, 'scalp_rounds': SCALP_ROUNDS,
         'scalp_max_multiplier': SCALP_MAX_MULTIPLIER, 'auction_opening_bid': AUCTION_OPENING_BID,
         'card_pack_value': list(CARD_PACK_VALUE), 'bet_steps': list(BET_STEPS),

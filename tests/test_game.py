@@ -152,20 +152,55 @@ class BettingTests(DerbyTestCase):
         with self.assertRaises(Reject):
             self.act(self.ann, 'koala_buy', item='hgh', target=[self.bob.id])
         self.act(self.ann, 'koala_buy', item='kneecaps', target=self.bob.id)
-        self.assertEqual(self.ann.private['cash'], 50)
+        self.assertEqual(self.ann.private['cash'], 85)   # 15% of $Dd 100
         with self.assertRaises(Reject):
             self.act(self.ann, 'koala_buy', item='kneecaps', target=self.cat.id)
         self.assertEqual(self.game.koala_purchases, {self.ann.id: {'kneecaps': self.bob.id}})
 
-    def test_loans_only_below_starting_cash(self):
+    def test_koala_prices_are_set_when_the_menu_opens(self):
         self.start_at_betting()
+        self.ann.private.update(cash=240, koala={'state': 'pending', 'bought': {}})
+        self.act(self.ann, 'koala_open')
+        self.assertEqual(self.ann.private['koala']['prices'], {'kneecaps': 36, 'hgh': 24, 'bribe': 12})
+        self.act(self.ann, 'koala_buy', item='kneecaps', target=self.bob.id)
+        self.act(self.ann, 'koala_buy', item='hgh', target=self.ann.id)   # still 24, not 10% of 204
+        self.assertEqual(self.ann.private['cash'], 240 - 36 - 24)
+
+    def test_leader_never_meets_the_koala_and_last_place_always_does(self):
+        for seed in range(20):
+            game = Derby(seed=seed)
+            game.time_scale = 1000
+            self.game = game
+            players = [self.join(n) for n in ('Ann', 'Bob', 'Cat')]
+            for p in players:
+                self.create(p)
+            game._start()
+            for p, cash in zip(players, (300, 120, 40)):
+                p.private['cash'] = cash
+            game._expire_phase()   # map -> bet
+            self.assertNotIn('koala', players[0].private)
+            self.assertIn('koala', players[2].private)
+
+    def test_one_fixed_loan_per_betting_event(self):
+        self.start_at_betting()
+        self.ann.private['cash'] = 20000   # rich players can borrow too
+        self.act(self.ann, 'borrow', amount=1)   # the amount is ignored: it's always LOAN_AMOUNT
+        self.assertEqual((self.ann.private['cash'], self.ann.private['borrowed']), (25000, 5000))
         with self.assertRaises(Reject):
-            self.act(self.ann, 'borrow', amount=50)
-        self.ann.private['cash'] = 30
-        self.act(self.ann, 'borrow', amount=100)
-        self.assertEqual((self.ann.private['cash'], self.ann.private['borrowed']), (130, 100))
-        with self.assertRaises(Reject):
-            self.act(self.ann, 'borrow', amount=10)
+            self.act(self.ann, 'borrow')   # once per event
+        self.act(self.ann, 'confirm_bets', bets={})
+        self.act(self.bob, 'confirm_bets', bets={})
+        self.act(self.cat, 'confirm_bets', bets={})
+        self.game.goto('payout')
+        # The next gambling stop: a fresh loan is allowed
+        self.game.public['stop'] = next(i for i, s in enumerate(self.game.season)
+                                        if i > self.game.public['stop'] and s['kind'] == 'gamble')
+        self.game.goto('bet')
+        self.act(self.ann, 'borrow')
+        self.assertEqual(self.ann.private['borrowed'], 10000)
+        self.game.goto('game_over')
+        row = next(r for r in self.game.public['final']['after'] if r['id'] == self.ann.id)
+        self.assertEqual(row['debt'], 20000)
 
 
 class SeasonTests(DerbyTestCase):
@@ -224,6 +259,18 @@ class SpecialsTests(DerbyTestCase):
         self.act(self.cat, 'purse_choice', choice='dont')
         self.assertEqual(self.game.phase, 'purse_result')
         self.assertEqual(self.bob.private['cash'], R.STARTING_CASH + R.PURSE_LONE_THIEF)
+        self.assertEqual(self.game.public['purse'][0]['won'], 0)
+
+    def test_two_thieves_cost_everyone_a_quarter_without_showing_it(self):
+        self.go('purse')   # Bob has no moral courage, so he steals
+        for p, cash in zip((self.ann, self.bob, self.cat), (1000, 400, 82)):
+            p.private['cash'] = cash
+        self.act(self.ann, 'purse_choice', choice='steal')
+        self.act(self.cat, 'purse_choice', choice='dont')
+        self.assertEqual([p.private['cash'] for p in (self.ann, self.bob, self.cat)], [750, 300, 62])
+        self.assertEqual(self.cat.private['last'], -20)
+        # The amounts would reveal everyone's cash: the host only learns that it happened
+        self.assertEqual([r['won'] for r in self.game.public['purse']], [None, None, None])
 
     def test_auction_winner_pays_and_collects(self):
         self.go('auction')
@@ -250,7 +297,8 @@ class SpecialsTests(DerbyTestCase):
         self.act(self.cat, 'case_vote', vote='cash')
         self.assertEqual(self.game.phase, 'case_result')
         self.assertIsNone(self.game.public['case']['value'])
-        self.assertEqual(self.bob.private['cash'], R.STARTING_CASH + R.CASE_CASH // 2)
+        self.assertEqual(self.bob.private['cash'], R.STARTING_CASH + R.CASE_CASH)
+        self.assertEqual(self.ann.private['cash'], R.STARTING_CASH + self.game.case_secret['value'])
 
     def test_scalping_runs_four_rounds(self):
         self.go('scalp')

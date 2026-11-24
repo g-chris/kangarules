@@ -6,7 +6,7 @@ const $ = id => document.getElementById(id);
 
 let pad = null;
 let draft = {key: null};
-let moneyStep = null;     // the +/- size picked on the betting slip / auction; kept between rounds
+const stepSize = {};      // the +/- size picked per kind of counter ('money', 'scalp'); kept between rounds
 let wakeTimer = null;
 
 /** Re-render at a set time (a reveal that happens without a state update). */
@@ -46,11 +46,11 @@ const stepper = (act, value, label, extra) =>
     `<span class="value">${label !== undefined ? label : value}</span>` +
     `<button class="step" data-act="${act}" data-dir="1" ${extra || ''}>+</button></div>`;
 
-/** The +/- size buttons under a money counter. */
-function stepPicker(rules) {
-    if (!rules.bet_steps.includes(moneyStep)) moneyStep = rules.money_step;
-    return '<div class="steps"><span class="dim">+/− by</span>' + rules.bet_steps.map(s =>
-        `<button class="stepsize ${s === moneyStep ? 'on' : ''}" data-act="step-size" data-step="${s}">${dd(s)}</button>`).join('') + '</div>';
+/** The +/- size buttons under a money counter. kind: 'money' (bets, bids) or 'scalp'. */
+function stepPicker(kind, options, rules) {
+    if (!options.includes(stepSize[kind])) stepSize[kind] = rules.money_step;
+    return '<div class="steps"><span class="dim">+/− by</span>' + options.map(s =>
+        `<button class="stepsize ${s === stepSize[kind] ? 'on' : ''}" data-act="step-size" data-kind="${kind}" data-step="${s}">${dd(s)}</button>`).join('') + '</div>';
 }
 
 const nameOf = (view, id) => (byId(view)[id] || {name: '?'}).name;
@@ -149,11 +149,11 @@ function bet(view, me, d) {
             ${stepper('bet', stake, dd(stake), `data-id="${p.id}"`)}
             <div class="help">${stake ? `(On win: ${dd(winnings(stake, odds[p.id], rules))})` : ''}</div></div>`;
     }).join('');
-    const canBorrow = priv.cash < rules.starting_cash;
+    const canBorrow = !priv.loan_taken;   // once per betting event
     const koala = myKoala(view, me);
     return `<h2 class="center">${esc(ev.name)}</h2><p class="center dim">${esc(ev.venue)}</p>
         <div class="slip">${lines}</div>
-        ${stepPicker(rules)}
+        ${stepPicker('money', rules.bet_steps, rules)}
         <p class="center">Betting ${dd(total)} of ${dd(priv.cash)}</p>
         ${koala ? `<div class="center">${koala}</div>` : ''}
         <div class="loan-slot">${canBorrow ? '<button class="apge-button wide shark" data-act="loan-open">LOANSHARK</button>' : ''}</div>
@@ -177,19 +177,21 @@ function betOverlay(view, me, d) {
         return `<div class="sheet">${art('shady_koala')}<h2>"G'day. Need anything?"</h2>
             <p>You have ${dd(priv.cash)}</p>
             ${rules.koala_items.map(i => {
-                const bought = koala.bought[i.id];
-                return `<button class="item" data-act="koala-item" data-item="${i.id}" ${bought || i.price > priv.cash ? 'disabled' : ''}>
-                    <b>${esc(i.name)}</b> · ${dd(i.price)}<br><small>${bought ? 'Bought → ' + esc(players[bought].name) : esc(i.effect)}</small></button>`;
+                // Prices are set by the server when the menu opens (a percent of your cash)
+                const bought = koala.bought[i.id], price = koala.prices[i.id];
+                return `<button class="item" data-act="koala-item" data-item="${i.id}" ${bought || price > priv.cash ? 'disabled' : ''}>
+                    <b>${esc(i.name)}</b> · ${dd(price)}<br><small>${bought ? 'Bought → ' + esc(players[bought].name) : esc(i.effect)}</small></button>`;
             }).join('')}
             <button class="apge-button wide" data-act="koala-exit">EXIT</button></div>`;
     }
-    if (d.loanOpen) {
-        d.loan = d.loan || rules.loan_min;
-        return `<div class="sheet">${art('loansharks')}<h2>"Short on cash, mate?"</h2>
-            ${stepper('loan', d.loan, dd(d.loan))}
-            <p class="red big">Shrimp and Barbie expect DOUBLE back at the end of the season: you'll owe ${dd(d.loan * rules.loan_multiplier)}.</p>
-            <button class="apge-button wide shark" data-act="borrow">Borrow ${dd(d.loan)}</button>
-            <button class="link" data-act="loan-close">Back to my betting slip</button></div>`;
+    if (d.loanOpen && !priv.loan_taken) {
+        const owe = rules.loan_amount * rules.loan_multiplier;
+        return `<div class="sheet">${art('loansharks')}<h2>"Fancy going big, mate?"</h2>
+            <p class="huge gold">${dd(rules.loan_amount)}</p>
+            <p class="red big">Shrimp and Barbie expect DOUBLE back at the end of the season: you'll owe ${dd(owe)}.</p>
+            <p class="dim">One loan per event.</p>
+            <button class="apge-button wide shark" data-act="borrow">Take the ${dd(rules.loan_amount)}</button>
+            <button class="link" data-act="loan-close">No thanks - back to my betting slip</button></div>`;
     }
     return '';
 }
@@ -224,7 +226,7 @@ function auction(view, me, d) {
         <p class="big">High bid: <b class="gold">${dd(a.high_bid || rules.auction_opening_bid)}</b>${a.leader_name ? ' by ' + esc(a.leader_name) : ''}</p>
         ${leading ? '<p class="done big">You\'re winning!</p>' : `
         ${stepper('bid', d.bid, dd(d.bid))}
-        ${stepPicker(rules)}
+        ${stepPicker('money', rules.bet_steps, rules)}
         <button class="apge-button wide" data-act="place-bid" ${d.bid > cash ? 'disabled' : ''}>Bid ${dd(d.bid)}</button>
         ${lowest > cash ? '<p class="dim">You can\'t afford to raise.</p>' : ''}`}
         <p class="dim">You have ${dd(cash)}</p></div>`;
@@ -239,7 +241,7 @@ function caseScreen(view, me, d) {
     }
     if (me.done) return `<div class="center"><h2>Case or No Case</h2><p class="big">You voted for ${priv.vote === 'case' ? 'The CASE' : 'The CASH'}.</p><p class="done">Locked in!</p></div>`;
     return `<div class="center"><h2>${esc(c.holder_name)} has the case</h2>
-        <p>Split the CASE (they get ${dd(c.cash)}) or split the ${dd(c.cash)} CASH (they get the case)?</p>
+        <p>Split the CASE between you (they get ${dd(c.cash)}), or take the CASH: ${dd(c.cash)} each (they keep the case)?</p>
         ${twoChoice(d, [['case', 'The CASE'], ['cash', 'The CASH']], false)}</div>`;
 }
 
@@ -250,6 +252,7 @@ function scalp(view, me, d) {
     return `<div class="center"><h2>Tickets! Round ${s.round} of ${s.rounds}</h2>
         <p>Face value: <b class="gold">${dd(s.face)}</b></p>
         ${stepper('price', d.price, dd(d.price))}
+        ${stepPicker('scalp', rules.scalp_steps, rules)}
         <p class="dim">Lowest price nobody else matched sells - and you pocket it.</p>
         <button class="apge-button wide" data-act="submit-price">Submit</button></div>`;
 }
@@ -324,17 +327,13 @@ const ACTS = {
         // A big step that doesn't fit stops at what's left (or at zero) instead of doing nothing
         const id = b.dataset.id, stake = draft.bets[id] || 0;
         const room = view.me.private.cash - sum(draft.bets);
-        draft.bets[id] = clamp(stake + moneyStep * Number(b.dataset.dir), 0, stake + Math.max(0, room));
+        draft.bets[id] = clamp(stake + stepSize.money * Number(b.dataset.dir), 0, stake + Math.max(0, room));
     },
-    'step-size': b => { moneyStep = Number(b.dataset.step); },
+    'step-size': b => { stepSize[b.dataset.kind] = Number(b.dataset.step); },
     'confirm-bets': () => send('confirm_bets', {bets: draft.bets}),
     'loan-open': () => { draft.loanOpen = true; },
     'loan-close': () => { draft.loanOpen = false; },
-    loan(b, view) {
-        const next = draft.loan + view.rules.money_step * Number(b.dataset.dir);
-        if (next >= view.rules.loan_min && next <= view.rules.starting_cash) draft.loan = next;
-    },
-    borrow: () => send('borrow', {amount: draft.loan}, () => { draft.loanOpen = false; }),
+    borrow: () => send('borrow', {}, () => { draft.loanOpen = false; }),
     'koala-open': () => send('koala_open', {}),
     'koala-item': b => { draft.koalaItem = b.dataset.item; },
     'koala-back': () => { draft.koalaItem = null; },
@@ -348,15 +347,23 @@ const ACTS = {
     bid(b, view) {
         const a = view.data.auction, cash = view.me.private.cash;
         const lowest = a.leader ? a.high_bid + view.rules.money_step : view.rules.auction_opening_bid;
-        draft.bid = clamp(draft.bid + moneyStep * Number(b.dataset.dir), lowest, Math.max(lowest, cash));
+        draft.bid = clamp(draft.bid + stepSize.money * Number(b.dataset.dir), lowest, Math.max(lowest, cash));
     },
     'place-bid': () => send('bid', {amount: draft.bid}),
     price(b, view) {
         const face = view.data.scalp.face;
-        const next = draft.price + view.rules.money_step * Number(b.dataset.dir);
-        if (next >= view.rules.money_step && next <= face * view.rules.scalp_max_multiplier) draft.price = next;
+        const step = view.rules.money_step;
+        draft.price = clamp(draft.price + stepSize.scalp * Number(b.dataset.dir), step, face * view.rules.scalp_max_multiplier);
     },
     'submit-price': () => send('scalp_ask', {price: draft.price}),
+    'rename-open': () => {
+        renaming = true;
+        setTimeout(() => { const input = $('rename-input'); if (input) { input.focus(); input.select(); } }, 0);
+    },
+    'rename-cancel': () => { renaming = false; $('overlay').innerHTML = ''; },
+    'rename-save': () => apge.rename($('rename-input').value).then(ack => {
+        if (ack.ok) { renaming = false; $('overlay').innerHTML = ''; rerender(); }
+    }),
     continue: () => apge.ready().then(rerender),
     reset: () => apge.reset(),
     quit: () => { if (confirm('Quit? Everyone goes back to the join screen.')) apge.quit(); },
@@ -376,31 +383,57 @@ function header(view) {
     if (!me) { $('me').innerHTML = ''; return; }
     const cash = me.private.cash;
     $('me').innerHTML = `${head(me, view.rules, 28)}<b>${esc(me.name)}</b>` +
+        (view.phase === 'lobby' ? '<button class="rename" data-act="rename-open">✎ Change name</button>' : '') +
         (apge.isVip() ? '<span class="badge">HOST</span>' : '') +
         (cash !== undefined ? `<span class="cash">${dd(cash)}</span>` : '');
 }
+
+/** Change name (lobby only, from the header). Sits in the overlay over any lobby screen. */
+function renameSheet(view, me) {
+    return `<div class="sheet"><h2>Change your name</h2>
+        <input id="rename-input" class="apge-input" maxlength="${view.max_name}" value="${esc(me.name)}" autocomplete="off">
+        <button class="apge-button wide" data-act="rename-save">Save</button>
+        <button class="link" data-act="rename-cancel">Never mind</button></div>`;
+}
+
+function overlay(html) {
+    // Don't rebuild the name box mid-typing: state updates would wipe what's been typed
+    if (renaming && $('rename-input')) return;
+    $('overlay').innerHTML = html;
+}
+
+let renaming = false;
 
 function render(view) {
     header(view);
     const me = view.me;
     if (!me) {
         show('join');
+        renaming = false;
         $('overlay').innerHTML = '';
         return;
     }
+    if (view.phase !== 'lobby') renaming = false;
     const d = draftFor(view);
     let html;
     if (view.phase === 'lobby') {
         html = lobby(view, me, d);
-        if (html === null) { $('overlay').innerHTML = ''; return; }
+        if (html === null) { overlay(renaming ? renameSheet(view, me) : ''); return; }
+        show('screen');
+        $('screen').innerHTML = html;
+        overlay(renaming ? renameSheet(view, me) : '');
+        return;
     } else {
         const screen = SCREENS[view.phase];
         html = screen ? screen(view, me, d) : watch(view);
     }
     show('screen');
     $('screen').innerHTML = html;
-    $('overlay').innerHTML = view.phase === 'bet' ? betOverlay(view, me, d) : '';
+    overlay(view.phase === 'bet' ? betOverlay(view, me, d) : '');
 }
 
 apge.on('state', render);
-apge.on('kicked', () => { draft = {key: null}; });
+apge.on('kicked', () => { draft = {key: null}; renaming = false; });
+document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.id === 'rename-input') ACTS['rename-save']();
+});

@@ -23,7 +23,8 @@ games" across a season of NZ and Australian stops. Most Didgeridollars
 
 - Players: 2-8 (phones), one host screen. Season = 13 stops in 3 zones
   (Youth Tournament, Minor Leagues, Professional Stadium); zone sets how
-  many Shady Koala visits and Kangarules frisks each gambling event has.
+  many Kangarules frisks each gambling event has (Shady Koala visits go
+  by standings instead, see below).
 - Two goals: ship the game, and ship APGE upgrades it needs (engine gaps
   get fixed in apge, never worked around here).
 - Hidden information is the game: cash, stats, bets, loans and uncaught
@@ -69,16 +70,18 @@ ambiguous - Chris to confirm or change):
   Frisks are random across all players (a clean frisk is shown as clean).
 - One LUCK roll per player per score, even where a formula uses LUCK more
   than once (Speed Hiking, Holding A Note).
-- Loansharks: any number of loans while cash < STARTING_CASH, only on the
-  betting slip, each 10..STARTING_CASH.
+- Loansharks: see the third round below (fixed $Dd 5,000, once per event).
 - Mother's Purse: no answer by the timer = DON'T STEAL.
 - Case or No Case: the doc's question text is garbled; implemented as
-  "majority of the other players picks: split the CASE (holder gets $100)
-  or split the $100 CASH (holder gets the case)". Shares round down; tied
-  vote = coin flip; the case value (10-300) is shown only if they pick CASE.
+  "majority of the other players picks: split the CASE (holder gets the
+  cash) or take the CASH (each voter gets it, holder gets the case)". Shares
+  round down; tied vote = coin flip; the case value is shown only if they
+  pick CASE. Amounts: see the third round below.
 - Card auction: opening bid $10, the high bidder can't raise themselves,
   bids must be affordable. No bids = no sale.
-- Ticket scalping: face value is a multiple of 10; asks from $10 to 2x face.
+- Ticket scalping: face value is a multiple of 10; asks from $10 to 2x face,
+  in steps of $Dd 10 or 100 (kept on the $10 grid so matching asks still
+  happen).
 - Awards: "Sharpest Punter" (most events with a winning bet) and "Biggest
   Mug" (total stakes on losing bets; koala spending and loans excluded).
 - One more game keeps names and heads; everyone re-spends skill points.
@@ -96,7 +99,7 @@ else, which left the other totals meaningless:
   the map route can zigzag between NZ and Australia.
 - Bets and card-auction bids can be any whole amount; under the counters the
   phone has 1 / 10 / 100 step buttons (the pick is kept between rounds). The
-  auction's minimum raise, loans and ticket prices still move in $Dd 10.
+  auction's minimum raise and ticket prices still move in $Dd 10.
 - Card pack is worth 10x: five cards at 10-100, the holo at 50-2000. The
   bidding screens show the range ($Dd 100 - $Dd 2,500).
 - Host timer: big, red with a single beep at 10 seconds left, on every screen
@@ -107,6 +110,33 @@ else, which left the other totals meaningless:
   the animation, and the slip lists purchases already made.
 - The final reveal: phones hold back the player's place and total until the
   host announces the winner (after the loansharks collect).
+
+Second round (2026-11-24), to keep the leader from running away:
+- Card auction lasts 30 seconds (was 60).
+- Shady Koala visits replace the per-zone counts: 1st place never gets one,
+  last place always does, everyone else has a 50% chance. Place = cash in
+  hand (loans ignored). Ties share the place; when everyone is level (the
+  first event) nobody is 1st or last, so everyone gets the 50% chance.
+- Koala prices are a percent of the buyer's own cash: Kneecaps 15%, HGH
+  10%, Bribe 5%, rounded down, at least $Dd 1. Set when the player opens
+  the menu (loans already taken count) and fixed for that visit. The phone
+  shows the dollar amount, never the percent.
+
+Third round (2026-11-24): seasons now end in the tens of thousands, so the
+specials pay more and the loansharks are for going big, not for getting by
+(a reversal of the original intent: winners' cuts keep players off zero):
+- Mother's Purse: lone thief gets $Dd 1,000; all honest = $Dd 200 each; more
+  than one thief = EVERY player loses 25% of their cash (rounded down). The
+  host says only that everyone lost 25%; each phone shows its own amount
+  (showing them would reveal everyone's cash).
+- Case or No Case: case holds $Dd 500-10,000 (never shown to players). CASE:
+  the voters split it and the holder gets $Dd 250. CASH: each voter gets
+  $Dd 250 and the holder keeps the case.
+- Ticket scalping: face value $Dd 150-1,500.
+- Loansharks: always on offer, a fixed $Dd 5,000 (owe $Dd 10,000), take it or
+  leave it, at most once per betting event. No cash limit.
+- Names can be changed in the lobby (phone header). A phone that rejoins
+  under a new name has its old player dropped by APGE (0.4.0), lobby only.
 
 -- WORKING TOGETHER ---------------------------------------------------------
 

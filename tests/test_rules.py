@@ -6,6 +6,7 @@ import os
 import random
 import sys
 import unittest
+from collections import Counter
 from fractions import Fraction
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
@@ -144,6 +145,31 @@ class KoalaTests(unittest.TestCase):
         self.assertEqual(res['caught'], {'b': {'bribe': 'b', 'hgh': 'b'}})
         self.assertEqual(res['applied'], [('a', 'kneecaps', 'b')])   # b's bribe was confiscated
 
+    def test_prices_are_a_percent_of_the_buyers_cash(self):
+        self.assertEqual(R.koala_prices(100), {'kneecaps': 15, 'hgh': 10, 'bribe': 5})
+        self.assertEqual(R.koala_prices(1999), {'kneecaps': 299, 'hgh': 199, 'bribe': 99})
+        self.assertEqual(R.koala_prices(0), {'kneecaps': 1, 'hgh': 1, 'bribe': 1})   # never free
+
+    def test_visits_go_to_whoever_is_behind(self):
+        cash = {'first': 500, 'mid1': 200, 'mid2': 200, 'last': 10}
+        seen = Counter()
+        for seed in range(400):
+            seen.update(R.koala_visitors(cash, random.Random(seed)))
+        self.assertEqual(seen['first'], 0)
+        self.assertEqual(seen['last'], 400)
+        for mid in ('mid1', 'mid2'):
+            self.assertTrue(150 < seen[mid] < 250, seen)   # about half the time
+
+    def test_koala_ties_share_the_place(self):
+        rng = random.Random(1)
+        for _ in range(50):
+            visitors = R.koala_visitors({'a': 300, 'b': 300, 'c': 20, 'd': 20}, rng)
+            self.assertEqual(visitors, {'c', 'd'})
+        level = Counter()
+        for _ in range(400):
+            level.update(R.koala_visitors({'a': 100, 'b': 100}, rng))   # first event: all flip
+        self.assertTrue(all(150 < level[p] < 250 for p in 'ab'), level)
+
     def test_frisking_a_clean_player_catches_nothing(self):
         res = R.resolve_koala({'a': {'hgh': 'a'}}, frisked={'b'})
         self.assertEqual(res['caught'], {})
@@ -152,10 +178,12 @@ class KoalaTests(unittest.TestCase):
 
 class SpecialEventTests(unittest.TestCase):
     def test_purse(self):
-        self.assertEqual(R.purse_payouts({'a': 'dont', 'b': 'dont'}), {'a': 20, 'b': 20})
-        self.assertEqual(R.purse_payouts({'a': 'steal', 'b': 'dont'}), {'a': 100, 'b': 0})
-        self.assertEqual(R.purse_payouts({'a': 'steal', 'b': 'steal', 'c': 'dont'}),
-                         {'a': 0, 'b': 0, 'c': 0})
+        cash = {'a': 1000, 'b': 4001, 'c': 0}
+        self.assertEqual(R.purse_payouts({'a': 'dont', 'b': 'dont'}, cash), {'a': 200, 'b': 200})
+        self.assertEqual(R.purse_payouts({'a': 'steal', 'b': 'dont'}, cash), {'a': 1000, 'b': 0})
+        # More than one thief: EVERYONE loses 25% of their cash, rounded down
+        self.assertEqual(R.purse_payouts({'a': 'steal', 'b': 'steal', 'c': 'dont'}, cash),
+                         {'a': -250, 'b': -1000, 'c': 0})
 
     def test_moral_courage_must_be_above_two(self):
         self.assertFalse(R.can_choose_morally(stats(mcr=2)))
@@ -172,7 +200,7 @@ class SpecialEventTests(unittest.TestCase):
         rng = random.Random(3)
         for _ in range(200):
             face = R.scalp_face_value(rng)
-            self.assertTrue(10 <= face <= 250 and face % R.MONEY_STEP == 0)
+            self.assertTrue(150 <= face <= 1500 and face % R.MONEY_STEP == 0, face)
 
     def test_case_holder_is_highest_mcr(self):
         field = {'a': stats(mcr=2), 'b': stats(mcr=7), 'c': stats(mcr=7)}
@@ -180,9 +208,13 @@ class SpecialEventTests(unittest.TestCase):
         self.assertEqual(holders, {'b', 'c'})
 
     def test_case_payouts(self):
-        self.assertEqual(R.case_payouts('h', ['a', 'b'], 250, 'case'), {'a': 125, 'b': 125, 'h': 100})
-        self.assertEqual(R.case_payouts('h', ['a', 'b', 'c'], 250, 'cash'),
-                         {'a': 33, 'b': 33, 'c': 33, 'h': 250})
+        # CASE: the voters split what's inside (rounded down), the holder gets $Dd 250
+        self.assertEqual(R.case_payouts('h', ['a', 'b', 'c'], 7001, 'case'),
+                         {'a': 2333, 'b': 2333, 'c': 2333, 'h': 250})
+        # CASH: every voter gets $Dd 250, the holder gets the case
+        self.assertEqual(R.case_payouts('h', ['a', 'b', 'c'], 7001, 'cash'),
+                         {'a': 250, 'b': 250, 'c': 250, 'h': 7001})
+        self.assertEqual(R.CASE_VALUE, (500, 10000))
 
     def test_case_majority_and_coin_flip(self):
         rng = random.Random(0)

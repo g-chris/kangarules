@@ -1,5 +1,51 @@
 # Down Under Gambler's Sweat It Out! Derby '27 - Change Log
 
+## Version 0.4.0 (2026-11-24)
+
+More catch-up for whoever is behind, so the leader can't run away with the season, and
+bigger specials and loans to match seasons that now end in the tens of thousands.
+
+### Bug Fixes
+- **Fixed "phantom" players left over from name changes** (HIGH)
+  - Issue: players who re-joined under a new name (a fresh tab, a lost session) left their
+    old player behind, greyed out; it was carried into the game with a blank character and
+    long odds
+  - Root cause: APGE matched players by name only, so a new name was always a new player
+  - Solution: APGE 0.4.0 drops those leftovers in the lobby (same phone, now playing as
+    someone else). Sleeping phones are never dropped
+  - Files modified: requirements.txt (APGE 0.4.0), game.py
+
+### New Features
+- **Change name**: a "Change name" button in the phone's header in the lobby (including
+  while drawing your head)
+- **Mother's Purse pays more**: a lone thief takes the whole $Dd 1,000; if nobody steals,
+  everyone gets $Dd 200; if more than one player steals, everyone loses 25% of their
+  cash. The TV only says that everyone lost a quarter, since the amounts would reveal
+  everyone's cash; each phone shows its own loss
+- **Case or No Case raised**: the case holds $Dd 500-10,000 (players are never told the
+  range). Take the CASE and the voters split it while the holder gets $Dd 250; take the
+  CASH and every voter gets $Dd 250 while the holder keeps the case
+- **Ticket scalping raised**: face values of $Dd 150-1,500, with $Dd 10 / 100 step buttons
+  for your asking price
+- **Loansharks are for going big**: always on offer, a fixed $Dd 5,000 (you'll owe
+  $Dd 10,000), take it or leave it, once per betting event
+- **Shady Koala visits by standings**: the player in 1st place never gets a visit, last
+  place always does, and everyone else has a 50% chance. This replaces the per-league
+  visit counts. Players tied for a place share it; at the first event everyone is level,
+  so everyone gets the 50% chance
+- **Shady Koala prices scale with your cash**: Bat to Kneecaps costs 15%, HGH Injection
+  10% and Bribe the Feds 5% of the cash you hold when you open the menu (at least
+  $Dd 1). The menu shows the dollar amounts
+- **Card auction is 30 seconds** (was 60)
+
+### Packaging / Internal
+- rules.koala_visitors and rules.koala_prices; ZONES no longer has koala_visits
+- Built on APGE 0.4.0 (leftover players dropped, rename, on_player_removed hook)
+- rules.LOAN_AMOUNT replaces LOAN_MIN; purse_payouts takes everyone's cash; the borrow
+  action ignores any amount sent
+- Tests: visits by standings and ties, percent prices fixed for the visit; the browser
+  test sets the first event's standings so the visits are predictable
+
 ## Version 0.3.0 (2026-11-24)
 
 Tweaks from the first 2 and 3 player playtests, where 99-1 longshots plus a few

@@ -24,7 +24,8 @@ import rules as R
 # Per-stop state, cleared every time the map is shown
 ROUND_PUBLIC = ('event', 'odds', 'frisks', 'performance', 'payout', 'purse', 'auction', 'case',
                 'scalp')
-ROUND_PRIVATE = ('bets', 'koala', 'choice', 'forced', 'vote', 'case_value', 'ask', 'last')
+ROUND_PRIVATE = ('bets', 'koala', 'choice', 'forced', 'vote', 'case_value', 'ask', 'last',
+                 'loan_taken')
 
 # Input phases that end early once every connected player is done: phase -> method name
 FINISH_WHEN_ALL_DONE = {
@@ -155,6 +156,11 @@ class Derby(Game):
         super().on_quit()
         self.finish_order = []
 
+    def on_player_removed(self, player):
+        # Kicked, or a leftover from a phone that joined again under a new name (APGE 0.4)
+        if player.id in self.finish_order:
+            self.finish_order.remove(player.id)
+
     # ---- helpers -------------------------------------------------------------------
 
     def current_stop(self):
@@ -241,23 +247,20 @@ class Derby(Game):
         self.public['odds'] = {pid: {'num': f.numerator, 'den': f.denominator,
                                      'label': R.odds_label(f)} for pid, f in self.odds.items()}
         self.koala_purchases = {}
-        ids = list(self.players)
-        visits = len(ids) if zone['koala_visits'] is None else min(zone['koala_visits'], len(ids))
-        for pid in self.rng.sample(ids, visits):
+        cash = {pid: p.private['cash'] for pid, p in self.players.items()}
+        for pid in R.koala_visitors(cash, self.rng):
             self.players[pid].private['koala'] = {'state': 'pending', 'bought': {}}
-
-    def can_borrow(self, player):
-        return player.private['cash'] < R.STARTING_CASH
 
     @action('borrow', phases='bet')
     def borrow(self, player, data):
+        # A fixed LOAN_AMOUNT, at most once per betting event (loan_taken clears each round)
         if player.public['done']:
             raise Reject('Your bets are already locked in.')
-        if not self.can_borrow(player):
-            raise Reject(f"Shrimp and Barbie only lend to players under $Dd {R.STARTING_CASH}.")
-        amount = money(data.get('amount'), R.LOAN_MIN, R.STARTING_CASH, 'Loan')
-        player.private['cash'] += amount
-        player.private['borrowed'] += amount
+        if player.private.get('loan_taken'):
+            raise Reject('Shrimp and Barbie only lend once per event.')
+        player.private['cash'] += R.LOAN_AMOUNT
+        player.private['borrowed'] += R.LOAN_AMOUNT
+        player.private['loan_taken'] = True
 
     def koala_visit(self, player, *states):
         visit = player.private.get('koala')
@@ -267,7 +270,10 @@ class Derby(Game):
 
     @action('koala_open', phases='bet')
     def koala_open(self, player, data):
-        self.koala_visit(player, 'pending')['state'] = 'open'
+        visit = self.koala_visit(player, 'pending')
+        # Priced from the cash you hold when you open the menu (loans already taken count),
+        # and fixed for the visit so one purchase doesn't make the next one cheaper
+        visit.update(state='open', prices=R.koala_prices(player.private['cash']))
 
     @action('koala_buy', phases='bet')
     def koala_buy(self, player, data):
@@ -278,9 +284,10 @@ class Derby(Game):
         if item['id'] in visit['bought']:
             raise Reject('You already bought that one.')
         target = choice(data.get('target'), self.players, 'a player')
-        if player.private['cash'] < item['price']:
+        price = visit['prices'][item['id']]
+        if player.private['cash'] < price:
             raise Reject("You can't afford that.")
-        player.private['cash'] -= item['price']
+        player.private['cash'] -= price
         visit['bought'][item['id']] = target
         self.koala_purchases.setdefault(player.id, {})[item['id']] = target
 
@@ -416,10 +423,13 @@ class Derby(Game):
     def enter_purse_result(self):
         # No answer counts as DON'T STEAL
         choices = {pid: p.private.get('choice', 'dont') for pid, p in self.players.items()}
-        won = R.purse_payouts(choices)
+        won = R.purse_payouts(choices, {pid: p.private['cash'] for pid, p in self.players.items()})
         for pid, p in self.players.items():
             self.credit(p, won[pid])
-        self.public['purse'] = [{'id': pid, 'name': p.name, 'choice': choices[pid], 'won': won[pid],
+        # A 25% loss would reveal everyone's cash, so the host only says that everyone lost it
+        penalty = sum(1 for c in choices.values() if c == 'steal') > 1
+        self.public['purse'] = [{'id': pid, 'name': p.name, 'choice': choices[pid],
+                                 'won': None if penalty else won[pid],
                                  'forced': bool(p.private.get('forced'))}
                                 for pid, p in self.players.items()]
 

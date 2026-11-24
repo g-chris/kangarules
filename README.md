@@ -33,12 +33,14 @@ Until APGE v0.3.0 is tagged on GitHub, install the engine from a local checkout 
   whoever they like, or nobody, in steps of $Dd 1, 10 or 100. You start with $Dd 100.
   Whoever wins the event takes 10% of the winnings on every winning bet.
 - **The season** is 13 stops, and the events come in a different order every game.
-- **Shady Koala**: some players get a "Psst!" and can buy a Bat to Kneecaps ($50), an HGH
-  Injection ($30) or Bribe the Feds ($10). More visits in the bigger leagues.
+- **Shady Koala**: some players get a "Psst!" and can buy a Bat to Kneecaps, an HGH
+  Injection or Bribe the Feds, priced at 15%, 10% and 5% of the cash you're holding. The
+  Koala never visits whoever is in 1st place, always visits last place, and visits
+  everyone else half the time.
 - **Kangarules Gambling Commission**: from the Minor Leagues on, random players are
   frisked before each event. Everything they bought is confiscated, in front of everyone.
-- **Loansharks**: below $Dd 100? Shrimp and Barbie will lend you up to $Dd 100, and they
-  want DOUBLE back at the end of the season.
+- **Loansharks**: want to go big? Once per betting event, Shrimp and Barbie will lend you
+  $Dd 5,000. They want DOUBLE back at the end of the season.
 - **Special events** between towns: Mother's Purse, a trading card auction, Case or No
   Case, and ticket scalping.
 

@@ -133,7 +133,7 @@ const SCREENS = {
             <ul class="rules-list">
                 <li>If ALL players pick DON'T STEAL, then ALL players get ${dd(r.honest)}</li>
                 <li>If ONLY 1 player picks STEAL, then that player gets ${dd(r.thief)}</li>
-                <li>If MORE THAN 1 player picks STEAL, then ALL players get $Dd 0</li>
+                <li>If MORE THAN 1 player picks STEAL, then ALL players lose ${r.penalty_percent}% of their cash</li>
             </ul></div>`, progress(view));
     },
 
@@ -142,8 +142,11 @@ const SCREENS = {
         const players = byId(view);
         const rows = view.data.purse.map(r => `<li>${head(players[r.id], view.rules, 36)} <b>${esc(r.name)}</b>: ` +
             `${r.choice === 'steal' ? 'STEAL' : "DON'T STEAL"}${r.forced ? ' <span class="dim">(no moral courage)</span>' : ''}` +
-            ` → <b class="gold">${dd(r.won)}</b></li>`).join('');
-        fill(`<div class="center"><h1>Mother's Purse</h1><ul class="choices">${rows}</ul></div>`, progress(view, 'Continue'));
+            (r.won === null ? '' : ` → <b class="gold">${dd(r.won)}</b>`) + '</li>').join('');
+        // won is null when several stole: each loss is a share of secret cash, so only phones show it
+        const penalty = view.data.purse.some(r => r.won === null)
+            ? `<p class="huge red">Too many thieves! Everyone loses ${view.rules.purse.penalty_percent}% of their cash.</p>` : '';
+        fill(`<div class="center"><h1>Mother's Purse</h1><ul class="choices">${rows}</ul>${penalty}</div>`, progress(view, 'Continue'));
     },
 
     auction(view) {
@@ -178,8 +181,8 @@ const SCREENS = {
         layout('board');
         const c = view.data.case, name = esc(c.holder_name);
         fill(`<div class="center">${art('briefcase', 'prop')}<p class="huge gold">${dd(c.cash)}</p>
-            <p class="big">${name} has the case. Do the other players want to split <b>the CASE</b> (and ${name} gets ${dd(c.cash)})
-            OR split <b>the ${dd(c.cash)} CASH</b> (and ${name} gets the case)?</p>
+            <p class="big">${name} has the case. Do the other players want to split <b>the CASE</b> between them (and ${name} gets ${dd(c.cash)})
+            OR take <b>the CASH</b>: ${dd(c.cash)} each (and ${name} keeps the case)?</p>
             <p class="dim">Only ${name} knows what's inside. Ask them. Trust them. Or don't.</p></div>`, progress(view, 'Voted'));
     },
 
@@ -190,7 +193,7 @@ const SCREENS = {
         const took = c.decision === 'case' ? 'the CASE' : 'the CASH';
         const reveal = c.decision === 'case'
             ? `<p class="huge gold">The case held ${dd(c.value)}</p><p class="big">${esc(c.holder_name)} gets ${dd(c.cash)}; everyone else gets ${dd(c.share)}</p>`
-            : `<p class="big">Everyone else splits the cash: ${dd(c.share)} each.</p><p class="big">${esc(c.holder_name)} keeps the case... and the secret.</p>`;
+            : `<p class="big">Everyone else takes the cash: ${dd(c.share)} each.</p><p class="big">${esc(c.holder_name)} keeps the case... and the secret.</p>`;
         fill(`<div class="center"><h1>They took ${took}!</h1>${c.coin_flip ? '<p class="dim">(Tied vote - settled by coin flip)</p>' : ''}
             <ul class="choices">${votes}</ul>${reveal}</div>`, progress(view, 'Continue'));
     },

@@ -1,5 +1,64 @@
 # Down Under Gambler's Sweat It Out! Derby '27 - Change Log
 
+## Version 0.3.0 (2026-11-24)
+
+Tweaks from the first 2 and 3 player playtests, where 99-1 longshots plus a few
+well-placed kneecaps turned two players' cash into tens of thousands and left everyone
+else's totals meaningless.
+
+### Bug Fixes
+- **Fixed the Sand Curling animation sometimes not appearing** (HIGH)
+  - Issue: some Sand Curling events showed an empty stage on the TV; other times it played.
+    Mini Golf and Half-Court Shots could do the same
+  - Root cause: the browser's first animation frame can be timestamped a few milliseconds
+    before the moment the scene started (about 1 frame in 6 in Chromium), so the scene saw
+    a slightly negative time. The turn-by-turn animation turned that into turn number -1,
+    threw an error, and the stage dropped the scene for the rest of the event
+  - Solution: animation time never goes below zero, the turn number is clamped, and a scene
+    that throws keeps drawing on the next frame instead of being dropped
+  - Files modified: static/stage.js
+- **Fixed phones spoiling the final results** (MEDIUM)
+  - Issue: every phone showed its place and final total the moment the season ended,
+    while the TV was still revealing the standings
+  - Root cause: the phone's final screen rendered as soon as game_over began; only the
+    host paced the reveal
+  - Solution: phones say "the final results are on the big screen" until the TV announces
+    the winner (after the loansharks collect), using the same pacing as the host
+  - Files modified: static/player.js, static/host.js, static/common.js
+
+### New Features
+- **Longest odds are now 50-1** (were 99-1)
+- **Event winner's cut**: the player who wins an event takes 10% of the winnings on every
+  winning bet, out of the bettors' payouts (bets on yourself included). The TV payout
+  screen and the winner's phone show the cut, and the phone's "On win" preview includes it
+- **Shuffled season**: the events and the special events come in a random order every
+  game (including One more game). The season keeps its shape: 13 stops, the specials in
+  the same slots, and the same three zones. More events can be added to the pools later,
+  so some will sit out each season
+- **Bet in 1s, 10s or 100s**: step buttons under the betting slip's counters (and the
+  card auction's bid) set how much each +/- moves. Bets and bids can be any whole amount
+- **Your bets during the event**: from locking in through the animation, the phone lists
+  your bets (with what each would pay) and your Shady Koala purchases (marked confiscated
+  if you were frisked). The betting slip also lists what you've bought from the Koala
+- **Bigger host timer** that turns red and beeps once at 10 seconds left, whenever players
+  are choosing or pressing Continue. Browsers only allow sound after the host page has
+  been clicked once, so the header asks for a click until then
+- **Card pack worth 10x**: the five cards are worth $Dd 10-100 each and the holographic
+  card $Dd 50-2000. Both bidding screens show the pack's possible value ($Dd 100 - $Dd 2,500)
+- Money shows thousands separators ($Dd 12,500)
+
+### Packaging / Internal
+- Uses APGE 0.3.0's new countdown warnings (`bindCountdown` urgentAt/onUrgent) and
+  `APGE.sound.beep()`, added for this
+- rules.build_season (pools GAMBLE_STOPS / SPECIALS, SEASON_SHAPE) replaces rules.SEASON;
+  sample screens and the browser test use the unshuffled route
+- New Developer Mode samples: betting slip after the Shady Koala, bets locked in, phone
+  during the event with bets, phone final results before and after the reveal
+- Tests: odds ceiling, winner's cut, shuffled seasons, any-amount bets and bids, a winner
+  kicked before payout; the browser test also checks the step buttons, the phone's bets
+  during the race, the timer warning and single beep, a negative-time animation frame and
+  the held-back final place
+
 ## Version 0.2.0 (2026-11-22)
 
 ### New Features

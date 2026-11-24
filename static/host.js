@@ -1,13 +1,15 @@
 // Host (TV) screen. Each phase picks a layout and fills #above / the canvas / #below.
 const apge = APGE.connect();
-const {esc, head, dd, byId, ordinal, art, stopTitle} = Common;
+const {esc, head, dd, byId, finalReveal, art, stopTitle} = Common;
 
 const $ = id => document.getElementById(id);
 let joinUrl = '';
 let revealTimer = null;
 
 Stage.mount($('stage'));
-apge.bindCountdown('timer');
+// Red with a single beep at rules.timer_warning seconds left, while players are choosing
+// (the server sends null for screens where nobody is)
+apge.bindCountdown('timer', null, {urgentAt: view => view.timer_warning, onUrgent: () => APGE.sound.beep()});
 fetch('/apge-info').then(r => r.json()).then(info => { joinUrl = info.player_url; if (apge.view) render(apge.view); })
     .catch(() => {});
 
@@ -115,8 +117,10 @@ const SCREENS = {
         const bets = pay.winning_bets.length ? '<ul class="bets">' + pay.winning_bets.map(b =>
             `<li><b>${esc(b.name)}</b> bet ${dd(b.stake)} → collects <b class="gold">${dd(b.payout)}</b></li>`).join('') + '</ul>'
             : '<p class="dim">No winning bets. The house thanks you.</p>';
+        const cut = pay.winner_cut
+            ? `<p class="big">${esc(winner.name)} takes ${rules.winner_cut_percent}% of the winnings: <b class="gold">${dd(pay.winner_cut)}</b></p>` : '';
         fill(`<div class="result">
-                <div class="winner">${head(winner, rules, 140)}<h1>${esc(winner.name)} wins!</h1><p>at ${esc(pay.odds)}</p></div>
+                <div class="winner">${head(winner, rules, 140)}<h1>${esc(winner.name)} wins!</h1><p>at ${esc(pay.odds)}</p>${cut}</div>
                 <div><h3>Finishing order</h3><ol>${order}</ol><h3>Winning bets</h3>${bets}</div>
               </div>`, progress(view, 'Continue'));
     },
@@ -148,6 +152,7 @@ const SCREENS = {
         fill(`<div class="center">${art('card_pack', 'prop')}
             <h1>Rugby Legends Trading Card Pack [Sealed] Auction</h1>
             <p class="huge" id="auction-clock"></p>
+            <p class="big">Estimated value: <b class="gold">${dd(view.rules.card_pack_value[0])} – ${dd(view.rules.card_pack_value[1])}</b></p>
             <p class="big">Current Winner: <b>${a.leader_name ? esc(a.leader_name) : ''}</b></p>
             <p class="huge gold">High Bid: ${dd(a.high_bid || view.rules.auction_opening_bid)}</p></div>`);
         $('auction-clock').textContent = Math.ceil(apge.timeRemaining() || 0) + 's';
@@ -218,8 +223,7 @@ const SCREENS = {
 // collect, then the winner and awards.
 function renderFinal(view) {
     const f = view.data.final, players = byId(view), rules = view.rules;
-    const beat = Math.floor((Date.now() - apge.phaseStarted) / 1000 / rules.final_reveal_seconds);
-    const n = f.before.length;
+    const {beat, n, loansharks, winner} = finalReveal(view, apge.phaseStarted);
     const row = (r, i, withDebt) => `<li>${head(players[r.id], rules, 40)} <b>${esc(r.name)}</b> ` +
         (withDebt ? `${dd(r.cash)} <span class="red">- ${dd(r.debt)} owed</span> = <b class="gold">${dd(r.final)}</b>`
                   : `<b class="gold">${dd(r.cash)}</b>`) + '</li>';
@@ -229,10 +233,10 @@ function renderFinal(view) {
         html += '<h1>The season is over!</h1><p class="big">Final cash, from last place...</p><ol class="standings" reversed start="' + n + '">' +
             shown.map((r, i) => row(r, i, false)).join('') + '</ol>';
     } else {
-        html += (beat === n + 1 ? `${art('loansharks', 'prop')}<h1>But wait... Shrimp and Barbie want their money back!</h1>`
+        html += (beat === loansharks ? `${art('loansharks', 'prop')}<h1>But wait... Shrimp and Barbie want their money back!</h1>`
             : `<h1>${f.winners.map(esc).join(' & ')} win${f.winners.length > 1 ? '' : 's'} the Derby!</h1>`) +
             '<ol class="standings">' + f.after.map((r, i) => row(r, i, true)).join('') + '</ol>';
-        if (beat > n + 1) {
+        if (beat >= winner) {
             html += '<div class="awards">' + (f.awards.map(a =>
                 `<div class="award"><h3>${esc(a.title)}</h3><p>${a.names.map(esc).join(' & ')} · ${esc(a.label)}</p></div>`).join('') ||
                 '') + '</div><p class="dim">The house always wins.</p>';
@@ -241,7 +245,7 @@ function renderFinal(view) {
     $('above').innerHTML = html + '</div>';
     $('below').innerHTML = '';
     clearTimeout(revealTimer);
-    if (beat <= n + 2) revealTimer = setTimeout(() => apge.view && apge.view.phase === 'game_over' && renderFinal(apge.view), 500);
+    if (beat <= winner) revealTimer = setTimeout(() => apge.view && apge.view.phase === 'game_over' && renderFinal(apge.view), 500);
 }
 
 function renderControls(view) {
@@ -275,8 +279,14 @@ function render(view) {
     renderControls(view);
 }
 
-// The auction clock is big and central, so tick it locally between updates
+// The auction clock is big and central, so tick it locally between updates. The sound hint
+// stays up until someone clicks the host page (browsers won't beep before that).
 setInterval(() => {
-    const clock = $('auction-clock');
-    if (clock) clock.textContent = Math.ceil(apge.timeRemaining() || 0) + 's';
+    const clock = $('auction-clock'), left = apge.timeRemaining() || 0;
+    if (clock) {
+        clock.textContent = Math.ceil(left) + 's';
+        const warnAt = apge.view && apge.view.timer_warning;
+        clock.classList.toggle('red', warnAt != null && left <= warnAt);
+    }
+    $('sound').hidden = APGE.sound.allowed();
 }, 250);

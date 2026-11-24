@@ -60,13 +60,18 @@ def players(game):
     return list(game.players.values())
 
 
-STOP = {stop['event']: i for i, stop in enumerate(R.SEASON)}
+# Sample screens use the design doc's route (no shuffle), so each event has a known stop and
+# zone: the frisk sample needs Sumo in the Professional Stadium
+ROUTE = R.build_season()
+STOP = {stop['event']: i for i, stop in enumerate(ROUTE)}
 
 
 def at_stop(game, event):
     """Start the season and arrive at the stop for `event` (its map screen)."""
     cast(game)
     game._start()
+    game.season = list(ROUTE)
+    game.public['season'] = R.season_map(game.season)
     game.public['stop'] = STOP[event] - 1
     game.next_stop()
 
@@ -77,10 +82,12 @@ def act(game, player, name, data):
 
 # ---- sample screens -----------------------------------------------------------------------------
 
-def betting(event):
+def betting(event, then=None):
     def setup(game):
         at_stop(game, event)
         game.map_done()
+        if then:
+            then(game)
     return setup
 
 
@@ -91,6 +98,30 @@ def performing(event):
         if game.phase == 'frisk':
             game.frisk_done()
     return setup
+
+
+def my_purchases(game):
+    """The phone's player (the first) meets the Shady Koala and buys two things."""
+    me, other = players(game)[:2]
+    me.private['koala'] = {'state': 'open', 'bought': {}}
+    act(game, me, 'koala_buy', {'item': 'kneecaps', 'target': other.id})
+    act(game, me, 'koala_buy', {'item': 'bribe', 'target': me.id})
+    act(game, me, 'koala_exit', {})
+
+
+def my_bets(game):
+    my_purchases(game)
+    me, other = players(game)[:2]
+    act(game, me, 'confirm_bets', {'bets': {me.id: 25, other.id: 10}})
+
+
+def watching_my_bets(game):
+    """The phone during the race: the bets and koala purchases the player made."""
+    betting('foot_race')(game)
+    my_bets(game)
+    game.finish_betting()
+    if game.phase == 'frisk':
+        game.frisk_done()
 
 
 def frisk(game):
@@ -181,7 +212,7 @@ def koala_open(game):
 
 
 N = 4   # sample players per screen (Screen's default)
-GAMBLES = [stop for stop in R.SEASON if stop['kind'] == 'gamble']
+GAMBLES = R.GAMBLE_STOPS   # every gambling event that can turn up in a season
 
 SCREENS = [
     Screen('lobby', 'Lobby', setup=cast, group='Lobby and map'),
@@ -210,19 +241,21 @@ SCREENS = [
     Screen('final-loansharks', 'The loansharks collect', setup=game_over, elapsed=final_beat(N + 1), group='Final results'),
     Screen('final-winner', 'Winner and awards', setup=game_over, elapsed=final_beat(N + 2), group='Final results'),
 ] + [
-    Screen(id, label, setup=setup, role='player', player=player, group='Phone')
-    for id, label, setup, player in [
-        ('phone-stats', 'Spend skill points', lambda g: [p.public.update(head=sample_head(0)) for p in players(g)], None),
-        ('phone-bet', 'Betting slip', betting('foot_race'), None),
-        ('phone-koala', 'Shady Koala', koala_open, None),
-        ('phone-watch', 'Watch the big screen', performing('foot_race'), None),
-        ('phone-payout', 'Payout', payout, None),
-        ('phone-purse', "Mother's Purse", special('mothers_purse'), None),
-        ('phone-auction', 'Card auction', special('card_auction', auction_bid), None),
-        ('phone-case-holder', 'Case or No Case: holding the case', special('case_or_no_case'), case_holder),
-        ('phone-case-vote', 'Case or No Case: voting', special('case_or_no_case'), case_voter),
-        ('phone-scalp', 'Ticket scalping', special('ticket_scalping'), None),
-        ('phone-final', 'Final results', game_over, None),
+    Screen(id, label, setup=setup, role='player', player=player, elapsed=elapsed, group='Phone')
+    for id, label, setup, player, elapsed in [
+        ('phone-stats', 'Spend skill points', lambda g: [p.public.update(head=sample_head(0)) for p in players(g)], None, 0),
+        ('phone-bet', 'Betting slip (after the Shady Koala)', betting('foot_race', my_purchases), None, 0),
+        ('phone-koala', 'Shady Koala', koala_open, None, 0),
+        ('phone-bet-locked', 'Bets locked in', betting('foot_race', my_bets), None, 0),
+        ('phone-watch', 'Watch the big screen (with my bets)', watching_my_bets, None, 0),
+        ('phone-payout', 'Payout', payout, None, 0),
+        ('phone-purse', "Mother's Purse", special('mothers_purse'), None, 0),
+        ('phone-auction', 'Card auction', special('card_auction', auction_bid), None, 0),
+        ('phone-case-holder', 'Case or No Case: holding the case', special('case_or_no_case'), case_holder, 0),
+        ('phone-case-vote', 'Case or No Case: voting', special('case_or_no_case'), case_voter, 0),
+        ('phone-scalp', 'Ticket scalping', special('ticket_scalping'), None, 0),
+        ('phone-final-wait', 'Final results: waiting for the reveal', game_over, None, 0),
+        ('phone-final', 'Final results', game_over, None, final_beat(N + 2)),
     ]
 ]
 

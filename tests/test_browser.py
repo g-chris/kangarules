@@ -55,6 +55,19 @@ def wait_phase(game, phase, timeout=90):
     raise AssertionError(f'never reached {phase} (stuck in {game.phase})')
 
 
+def use_design_doc_route(game):
+    """Test hook: swap the shuffled season for the unshuffled one, so each event is at a known
+    stop and zone (Sand Curling needs zone 2's frisk). Call while the first map is showing."""
+    with game.lock:
+        game.season = R.build_season()
+        game.public['season'] = R.season_map(game.season)
+        game.mark_dirty()
+        game._flush()
+
+
+STOP = {stop['event']: i for i, stop in enumerate(R.build_season())}
+
+
 def jump_to(game, stop_index):
     """Test hook: make the next map stop `stop_index` (skips the stops in between)."""
     with game.lock:
@@ -128,6 +141,7 @@ def main(shots=None):
         # VIP starts from their phone
         tap(phones[0], '[data-act=start]')
         wait_phase(game, 'map')
+        use_design_doc_route(game)
         check.shot(host, 'host-map')
         wait_phase(game, 'bet')
         check.shot(host, 'host-odds')
@@ -139,13 +153,22 @@ def main(shots=None):
         tap(visited[0], '[data-act=koala-item][data-item=hgh]')
         tap(visited[0], '[data-act=koala-target]', 0)
         tap(visited[0], '[data-act=koala-exit]')
+        assert 'HGH Injection' in visited[0].inner_text('#screen'), 'koala purchase not on the slip'
         for i, page in enumerate(phones):
+            if i == 2:
+                tap(page, '[data-act=step-size][data-step="1"]')   # bet in ones
             for _ in range(i + 1):
                 page.locator('[data-act=bet][data-dir="1"]').nth(i).click()
             if i == 1:
                 check.shot(page, 'phone-slip')
             tap(page, '[data-act=confirm-bets]')
+        bets = [game.player_by_name(n).private.get('bets') for n in NAMES]
+        ids = [game.player_by_name(n).id for n in NAMES]
+        assert bets == [{ids[0]: 10}, {ids[1]: 20}, {ids[2]: 3}], f'step buttons bet wrong: {bets}'
         wait_phase(game, 'perform')
+        assert 'Your bets' in phones[1].inner_text('#screen'), 'phone hides its bets during the race'
+        assert 'HGH Injection' in visited[0].inner_text('#screen'), 'koala purchase hidden during the race'
+        check.shot(phones[1], 'phone-watch-bets')
         time.sleep(5.5)
         check.shot(host, 'host-race')
         wait_phase(game, 'payout')
@@ -165,12 +188,28 @@ def main(shots=None):
         wait_phase(game, 'purse_result')
         check.shot(host, 'host-purse-result')
 
+        # The host timer: red with one beep as it passes rules.TIMER_WARNING_SECONDS
+        host.mouse.click(5, 300)   # browsers only allow sound once the page has been clicked
+        host.evaluate("""() => { window.beeps = 0; const beep = APGE.sound.beep;
+                                 APGE.sound.beep = o => { window.beeps++; return beep(o); }; }""")
+        with game.lock:
+            game.start_timer(R.TIMER_WARNING_SECONDS + 1.5)
+            game._flush()
+        time.sleep(1)
+        assert 'apge-urgent' not in host.get_attribute('#timer', 'class'), 'timer red too early'
+        time.sleep(2.5)
+        assert 'apge-urgent' in host.get_attribute('#timer', 'class'), 'timer not red at 10s left'
+        time.sleep(1)
+        assert host.evaluate('window.beeps') == 1, 'expected exactly one beep'
+        assert host.locator('#sound').is_hidden(), 'sound hint still up after a click'
+        check.shot(host, 'host-timer-warning')
+
         # A loan: spend down below starting cash, then visit the loansharks next betting round
         with game.lock:
             game.players[game.finish_order[1]].private['cash'] = 40
             game.mark_dirty()
             game._flush()
-        jump_to(game, 3)   # Fist Fight (elimination animation), zone 1
+        jump_to(game, STOP['fist_fight'])   # elimination animation, zone 1
         wait_phase(game, 'bet')
         shark_phone = phones[1]
         if shark_phone.locator('.psst').count():
@@ -187,8 +226,9 @@ def main(shots=None):
         check.shot(host, 'host-fistfight')
 
         # Trading Card Auction
-        jump_to(game, 4)
+        jump_to(game, STOP['card_auction'])
         wait_phase(game, 'auction')
+        assert '2,500' in phones[0].inner_text('#screen'), 'no card pack value estimate'
         tap(phones[0], '[data-act=place-bid]')
         tap(phones[2], '[data-act=place-bid]')
         check.shot(host, 'host-auction')
@@ -201,7 +241,7 @@ def main(shots=None):
         check.shot(host, 'host-auction-result')
 
         # Sand curling (turns animation), zone 2 with a frisk
-        jump_to(game, 5)
+        jump_to(game, STOP['sand_curling'])
         wait_phase(game, 'bet')
         for page in phones:
             if page.locator('.psst').count():
@@ -213,11 +253,15 @@ def main(shots=None):
         wait_phase(game, 'frisk')
         check.shot(host, 'host-frisk')
         wait_phase(game, 'perform')
+        # A frame can arrive with t a hair below zero; that used to throw and blank the turns
+        # animation for the whole event (Sand Curling "sometimes" missing)
+        host.evaluate("""() => { const c = document.createElement('canvas').getContext('2d');
+                                 Stage.eventScene(apge.view)(c, 800, 450, -0.004); }""")
         time.sleep(4.5)
         check.shot(host, 'host-turns')
 
         # Case or No Case
-        jump_to(game, 7)
+        jump_to(game, STOP['case_or_no_case'])
         wait_phase(game, 'case')
         holder = game.case_secret['holder']
         for page, name in zip(phones, NAMES):
@@ -231,7 +275,7 @@ def main(shots=None):
         check.shot(host, 'host-case-result')
 
         # Ticket Scalping, one round
-        jump_to(game, 10)
+        jump_to(game, STOP['ticket_scalping'])
         wait_phase(game, 'scalp')
         check.shot(host, 'host-scalp')
         for i, page in enumerate(phones):
@@ -242,7 +286,7 @@ def main(shots=None):
         check.shot(host, 'host-scalp-result')
 
         # Holding a Note (elimination with notes), then the season finale
-        jump_to(game, 12)
+        jump_to(game, STOP['note'])
         wait_phase(game, 'bet')
         skip(game)
         wait_phase(game, 'frisk')
@@ -250,10 +294,12 @@ def main(shots=None):
         wait_phase(game, 'perform')
         time.sleep(5)
         check.shot(host, 'host-note')
-        jump_to(game, len(R.SEASON))
+        jump_to(game, len(R.SEASON_SHAPE))
         wait_phase(game, 'game_over')
         time.sleep(R.FINAL_REVEAL_SECONDS * (len(NAMES) + 1) + 1)
         check.shot(host, 'host-final-loansharks')
+        check.shot(phones[0], 'phone-final-wait')
+        assert 'place' not in phones[0].inner_text('#screen'), 'phone spoiled the final reveal'
         time.sleep(R.FINAL_REVEAL_SECONDS)
         check.shot(host, 'host-final')
         check.shot(phones[0], 'phone-final')

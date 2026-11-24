@@ -65,7 +65,7 @@ class DevModeTests(unittest.TestCase):
 
     def test_the_js_only_asks_for_listed_art_and_all_listed_art_is_used(self):
         listed = {a.id for a in dev.ART}
-        venues = {R.venue_art(stop['venue']) for stop in R.SEASON if stop['kind'] == 'gamble'}
+        venues = {R.venue_art(stop['venue']) for stop in R.GAMBLE_STOPS}
         used = js_art_ids()
         self.assertEqual(used - listed, set(), 'the JS draws art dev.ART does not list')
         self.assertEqual(listed - used - venues, set(), 'dev.ART lists art nothing draws')

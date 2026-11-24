@@ -78,13 +78,20 @@ class LobbyTests(DerbyTestCase):
 class BettingTests(DerbyTestCase):
     def test_bets_are_validated(self):
         self.start_at_betting()
-        for bad in ({'bets': {self.bob.id: 110}}, {'bets': {self.bob.id: 15}},
+        for bad in ({'bets': {self.bob.id: 110}}, {'bets': {self.bob.id: -1}},
                     {'bets': {self.bob.id: 60, self.cat.id: 60}}, {'bets': {'nobody': 10}},
-                    {'bets': {self.bob.id: True}}, {'bets': [10]}, {}):
+                    {'bets': {self.bob.id: True}}, {'bets': {self.bob.id: 1.5}}, {'bets': [10]}, {}):
             with self.assertRaises(Reject):
                 self.act(self.ann, 'confirm_bets', **bad)
         self.assertEqual(self.ann.private['cash'], R.STARTING_CASH)
         self.assertFalse(self.ann.public['done'])
+
+    def test_bets_can_be_any_whole_amount(self):
+        # The slip's +/- buttons go up in 1, 10 or 100
+        self.start_at_betting()
+        self.act(self.ann, 'confirm_bets', bets={self.bob.id: 7, self.cat.id: 93})
+        self.assertEqual(self.ann.private['cash'], 0)
+        self.assertEqual(self.ann.private['bets'], {self.bob.id: 7, self.cat.id: 93})
 
     def test_last_holdout_disconnecting_ends_betting(self):
         self.start_at_betting()
@@ -102,11 +109,39 @@ class BettingTests(DerbyTestCase):
             self.act(p, 'confirm_bets', bets={self.ann.id: 20, self.bob.id: 10} if p is self.cat else {})
         self.game.outcome['order'] = [self.ann.id, self.bob.id, self.cat.id]
         self.game.goto('payout')
-        self.assertEqual(self.cat.private['cash'], 100 - 30 + 20 + 50)
+        # 20 at 5-2 wins 50, less Ann's 10% cut as the event winner
+        self.assertEqual(self.cat.private['cash'], 100 - 30 + 20 + 45)
         self.assertEqual(self.cat.private['bets_won'], 1)
         self.assertEqual(self.cat.private['money_lost'], 10)
-        self.assertEqual(self.cat.private['last'], 40)
-        self.assertEqual(self.game.public['payout']['winning_bets'][0]['payout'], 70)
+        self.assertEqual(self.cat.private['last'], 35)
+        self.assertEqual(self.game.public['payout']['winning_bets'][0]['payout'], 65)
+        self.assertEqual(self.game.public['payout']['winner_cut'], 5)
+        self.assertEqual((self.ann.private['cash'], self.ann.private['last']), (105, 5))
+        self.assertEqual(self.bob.private['cash'], 100)
+
+    def test_winner_backing_themselves_gets_their_cut_back(self):
+        self.start_at_betting()
+        self.game.odds = {pid: R.Fraction(10, 1) for pid in self.game.players}
+        self.act(self.ann, 'confirm_bets', bets={self.ann.id: 10})
+        self.act(self.bob, 'confirm_bets', bets={self.ann.id: 50})
+        self.act(self.cat, 'confirm_bets', bets={self.bob.id: 40})
+        self.game.outcome['order'] = [self.ann.id, self.bob.id, self.cat.id]
+        self.game.goto('payout')
+        # Ann: 10 back + 100 winnings - 10 cut, plus the cut of both winning bets (10 + 50)
+        self.assertEqual(self.ann.private['cash'], 90 + 100 + 60)
+        self.assertEqual(self.ann.private['last'], 90 + 60 - 0)
+        self.assertEqual(self.bob.private['cash'], 50 + 50 + 500 - 50)
+        self.assertEqual(self.cat.private['last'], -40)
+
+    def test_winner_kicked_before_payout_does_not_crash(self):
+        self.start_at_betting()
+        self.act(self.bob, 'confirm_bets', bets={self.ann.id: 50})
+        self.act(self.ann, 'confirm_bets', bets={})
+        self.act(self.cat, 'confirm_bets', bets={})
+        self.game.outcome['order'] = [self.ann.id, self.bob.id, self.cat.id]
+        del self.game.players[self.ann.id]
+        self.game.goto('payout')
+        self.assertEqual(self.game.phase, 'payout')
 
     def test_koala_purchase_targets_must_be_players(self):
         self.start_at_betting()
@@ -131,6 +166,28 @@ class BettingTests(DerbyTestCase):
         self.assertEqual((self.ann.private['cash'], self.ann.private['borrowed']), (130, 100))
         with self.assertRaises(Reject):
             self.act(self.ann, 'borrow', amount=10)
+
+
+class SeasonTests(DerbyTestCase):
+    def test_each_game_shuffles_the_season(self):
+        self.start_at_betting()
+        first = [s['event'] for s in self.game.season]
+        self.assertEqual([(s['kind'], s['zone']) for s in self.game.season], R.SEASON_SHAPE)
+        self.assertEqual(self.game.public['season'], R.season_map(self.game.season))
+        seasons = {tuple(first)}
+        for _ in range(5):
+            self.game._reset()
+            for p in (self.ann, self.bob, self.cat):
+                self.act(p, 'submit_stats', str=1, spd=1, mcr=1)
+            self.game._start()
+            seasons.add(tuple(s['event'] for s in self.game.season))
+        self.assertGreater(len(seasons), 1, 'One more game should get a fresh order')
+
+    def test_host_timer_warns_only_while_players_are_choosing(self):
+        self.start_at_betting()
+        self.assertEqual(self.game.host_view()['timer_warning'], R.TIMER_WARNING_SECONDS)
+        self.game.goto('map')
+        self.assertIsNone(self.game.host_view()['timer_warning'])
 
 
 class PrivacyAndResetTests(DerbyTestCase):
@@ -175,11 +232,13 @@ class SpecialsTests(DerbyTestCase):
             self.act(self.ann, 'bid', amount=20)    # already winning
         with self.assertRaises(Reject):
             self.act(self.bob, 'bid', amount=10)    # must beat the high bid
-        self.act(self.bob, 'bid', amount=30)
+        with self.assertRaises(Reject):
+            self.act(self.bob, 'bid', amount=19)    # ...by at least MONEY_STEP
+        self.act(self.bob, 'bid', amount=31)        # but any whole amount above that is fine
         self.game.goto('auction_open')
         total = self.game.public['auction']['total']
         self.game.goto('auction_result')
-        self.assertEqual(self.bob.private['cash'], R.STARTING_CASH - 30 + total)
+        self.assertEqual(self.bob.private['cash'], R.STARTING_CASH - 31 + total)
         self.assertEqual(self.ann.private['cash'], R.STARTING_CASH)
 
     def test_case_value_stays_secret_if_they_take_the_cash(self):

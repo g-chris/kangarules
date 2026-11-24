@@ -89,7 +89,7 @@ class OddsTests(unittest.TestCase):
         odds = R.odds_calc(field, 'foot_race', random.Random(1))
         self.assertLess(odds['fast'], odds['slow'])
         self.assertEqual(odds['fast'], R.ODDS_FLOOR)       # always wins: 1-10
-        self.assertEqual(odds['slow'], Fraction(99, 1))   # never won: long odds, not infinite
+        self.assertEqual(odds['slow'], R.ODDS_CEILING)    # never won: capped long odds, not 99-1
 
     def test_even_match_is_close_to_evens(self):
         field = {'a': stats(spd=5), 'b': stats(spd=5)}
@@ -97,10 +97,20 @@ class OddsTests(unittest.TestCase):
         for frac in odds.values():
             self.assertTrue(Fraction(2, 3) <= frac <= Fraction(3, 2), frac)
 
-    def test_payout_returns_stake_plus_winnings(self):
-        self.assertEqual(R.payout(20, Fraction(5, 2)), 70)
-        self.assertEqual(R.payout(10, Fraction(1, 10)), 11)
-        self.assertEqual(R.payout(10, Fraction(1, 3)), 13)   # rounds down
+    def test_odds_never_longer_than_the_ceiling(self):
+        field = {'fast': stats(spd=10)}
+        field.update({f'slow{i}': stats() for i in range(7)})
+        odds = R.odds_calc(field, 'foot_race', random.Random(4))
+        self.assertEqual(R.ODDS_CEILING, Fraction(50, 1))
+        self.assertTrue(all(R.ODDS_FLOOR <= f <= R.ODDS_CEILING for f in odds.values()), odds)
+
+    def test_payout_returns_stake_plus_winnings_less_the_winners_cut(self):
+        self.assertEqual(R.payout(20, Fraction(5, 2)), 20 + 50 - 5)
+        self.assertEqual(R.winner_cut(20, Fraction(5, 2)), 5)
+        self.assertEqual(R.payout(10, Fraction(1, 10)), 11)   # $Dd 1 of winnings: no cut
+        self.assertEqual(R.payout(10, Fraction(1, 3)), 13)    # rounds down
+        self.assertEqual(R.payout(100, Fraction(50, 1)), 100 + 5000 - 500)
+        self.assertEqual(R.winner_cut(7, Fraction(3, 1)), 2)   # 10% of 21, rounded down
 
     def test_labels(self):
         self.assertEqual(R.odds_label(Fraction(5, 2)), '5-2')
@@ -184,9 +194,14 @@ class SpecialEventTests(unittest.TestCase):
     def test_card_pack(self):
         cards = R.open_card_pack(random.Random(5))
         self.assertEqual(len(cards), 6)
-        self.assertTrue(all(1 <= c['value'] <= 10 for c in cards[:5]))
+        self.assertTrue(all(10 <= c['value'] <= 100 for c in cards[:5]))
         self.assertEqual(cards[5]['name'], R.HOLO_CARD_NAME)
-        self.assertTrue(10 <= cards[5]['value'] <= 200)
+        self.assertTrue(50 <= cards[5]['value'] <= 2000)
+        self.assertEqual(R.CARD_PACK_VALUE, (100, 2500))   # shown while bidding
+        rng = random.Random(6)
+        for _ in range(200):
+            total = sum(c['value'] for c in R.open_card_pack(rng))
+            self.assertTrue(100 <= total <= 2500, total)
 
 
 class DataTests(unittest.TestCase):
@@ -197,14 +212,42 @@ class DataTests(unittest.TestCase):
         self.assertFalse(R.valid_head('0' * (R.HEAD_GRID ** 2 - 1)))
         self.assertFalse(R.valid_head(None))
 
-    def test_season_matches_design_doc(self):
-        self.assertEqual(len(R.SEASON), 13)
-        self.assertEqual([s['zone'] for s in R.SEASON], [1] * 4 + [2] * 5 + [3] * 4)
-        for stop in R.SEASON:
-            table = R.EVENTS if stop['kind'] == 'gamble' else R.SPECIALS
-            self.assertIn(stop['event'], table)
-        for entry in R.season_map(R.SEASON):
-            self.assertIn('lat', entry)
+    def test_unshuffled_season_is_the_design_doc_route(self):
+        season = R.build_season()
+        self.assertEqual(len(season), 13)
+        self.assertEqual([s['zone'] for s in season], [1] * 4 + [2] * 5 + [3] * 4)
+        self.assertEqual([s['event'] for s in season], [
+            'foot_race', 'mothers_purse', 'speed_hike', 'fist_fight', 'card_auction', 'sand_curling',
+            'mini_golf', 'case_or_no_case', 'mascot_race', 'sumo', 'ticket_scalping', 'half_court', 'note'])
+
+    def test_shuffled_seasons_keep_the_shape(self):
+        orders = set()
+        for seed in range(20):
+            season = R.build_season(random.Random(seed))
+            self.assertEqual([(s['kind'], s['zone']) for s in season], R.SEASON_SHAPE)
+            events = [s['event'] for s in season]
+            self.assertEqual(len(events), len(set(events)), 'an event came up twice')
+            for stop in season:
+                table = R.EVENTS if stop['kind'] == 'gamble' else R.SPECIALS
+                self.assertIn(stop['event'], table)
+                if stop['kind'] == 'gamble':
+                    self.assertIn('venue', stop)
+            for entry in R.season_map(season):
+                self.assertIn('lat', entry)
+            orders.add(tuple(events))
+        self.assertGreater(len(orders), 15, 'seasons should differ from game to game')
+
+    def test_a_bigger_pool_leaves_some_events_out(self):
+        extra = dict(R.GAMBLE_STOPS[0], event='foot_race_2')
+        pool = R.GAMBLE_STOPS + [extra]
+        original = R.GAMBLE_STOPS
+        try:
+            R.GAMBLE_STOPS = pool
+            season = R.build_season(random.Random(1))
+        finally:
+            R.GAMBLE_STOPS = original
+        gambles = [s for s in season if s['kind'] == 'gamble']
+        self.assertEqual(len(gambles), 9)
 
 
 if __name__ == '__main__':

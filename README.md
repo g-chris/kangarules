@@ -29,8 +29,10 @@ Until APGE v0.3.0 is tagged on GitHub, install the engine from a local checkout 
 ## How to play
 
 - **Skills**: STRENGTH, SPEED and MORAL COURAGE. Nobody else sees yours. Lie freely.
-- **Betting**: at each stop, everyone sees the odds and bets on whoever they like (or
-  nobody) in $Dd 10 steps. You start with $Dd 100.
+- **Betting**: at each stop, everyone sees the odds (50-1 at the longest) and bets on
+  whoever they like, or nobody, in steps of $Dd 1, 10 or 100. You start with $Dd 100.
+  Whoever wins the event takes 10% of the winnings on every winning bet.
+- **The season** is 13 stops, and the events come in a different order every game.
 - **Shady Koala**: some players get a "Psst!" and can buy a Bat to Kneecaps ($50), an HGH
   Injection ($30) or Bribe the Feds ($10). More visits in the bigger leagues.
 - **Kangarules Gambling Commission**: from the Minor Leagues on, random players are

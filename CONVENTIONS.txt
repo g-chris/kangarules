@@ -40,9 +40,13 @@ games" across a season of NZ and Australian stops. Most Didgeridollars
   = host canvas (map + animations, pure functions of elapsed time);
   common.js = helpers shared by host and phone; dev.py = the art list and
   Developer Mode sample screens (tests/test_dev.py keeps them honest).
-- The season is a data list (rules.SEASON). Roguelike shuffling and extra
-  events later = build a different list / add EVENTS entries, not new code
-  paths. Gambling events differ only by score formula + visual type.
+- The season is data: rules.build_season fills SEASON_SHAPE (each stop's
+  kind and zone) with a random draw from the pools GAMBLE_STOPS and
+  SPECIALS, fresh every game. More events = add EVENTS + GAMBLE_STOPS (or
+  SPECIALS) entries, not new code paths; with more than the shape needs,
+  some sit out each season. build_season() with no rng is the design doc's
+  route, used by sample screens and tests. Gambling events differ only by
+  score formula + visual type.
 - Money from an event is applied when its result screen opens, never
   earlier, so a phone's cash can't spoil an animation still running.
 
@@ -55,8 +59,9 @@ ambiguous - Chris to confirm or change):
 - Host may start before everyone finishes; unfinished players get a blank
   head and 0 stats rather than blocking the game.
 - Odds: rules.odds_calc, ODDS_SIMS=100 runs, fractions simplified to a
-  denominator <= 10, floor 1-10, never-won = 99-1. Payout = stake + stake x
-  odds, rounded down. Odds ignore Shady Koala effects (bought in secret).
+  denominator <= 10, floor 1-10, ceiling 50-1 (never-won gets 50-1). Payout =
+  stake + stake x odds, rounded down, less the event winner's cut. Odds
+  ignore Shady Koala effects (bought in secret).
 - Shady Koala: each item at most once per visit, any player (incl. self)
   can be targeted, money is spent even if the purchase is negated. Order:
   frisk negates ALL of that buyer's purchases -> surviving bribes protect
@@ -78,6 +83,30 @@ ambiguous - Chris to confirm or change):
   Mug" (total stakes on losing bets; koala spending and loans excluded).
 - One more game keeps names and heads; everyone re-spends skill points.
 - Town spellings fixed from the doc: Hanmer Springs, Lightning Ridge.
+
+Settled by Chris after the 2-3 player playtests (2026-11-24). Two players
+won tens of thousands with 99-1 longshots made safe by kneecapping everyone
+else, which left the other totals meaningless:
+- Odds ceiling 50-1 (was 99-1).
+- Event winner's cut: 10% of every winning bet's winnings (rounded down per
+  bet) goes to the player who won the event, taken out of the bettors'
+  payout, including on bets on themselves. Shown on both screens.
+- Season order is shuffled every game, shape kept: same stop count, same
+  gamble/special slots and zones. A gambling event brings its own town, so
+  the map route can zigzag between NZ and Australia.
+- Bets and card-auction bids can be any whole amount; under the counters the
+  phone has 1 / 10 / 100 step buttons (the pick is kept between rounds). The
+  auction's minimum raise, loans and ticket prices still move in $Dd 10.
+- Card pack is worth 10x: five cards at 10-100, the holo at 50-2000. The
+  bidding screens show the range ($Dd 100 - $Dd 2,500).
+- Host timer: big, red with a single beep at 10 seconds left, on every screen
+  where players are choosing or pressing Continue (not the map, frisks or
+  animations: game.WATCH_PHASES). Browsers stay silent until the host page is
+  clicked once; the header says so until then.
+- Phones show their bets and Shady Koala purchases from locking in through
+  the animation, and the slip lists purchases already made.
+- The final reveal: phones hold back the player's place and total until the
+  host announces the winner (after the loansharks collect).
 
 -- WORKING TOGETHER ---------------------------------------------------------
 

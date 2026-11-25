@@ -49,6 +49,10 @@ SCALP_SECONDS = 30
 SCALP_ROUNDS = 4
 FINAL_REVEAL_SECONDS = 4    # host pause per final-results beat (client-side pacing)
 TIMER_WARNING_SECONDS = 10  # the host timer turns red and beeps once at this many seconds left
+NEWS_LEAD_SECONDS = 2       # breaking news: the banner on its own before the first headline...
+NEWS_SECONDS_EACH = 4       # ...then a new accident headline this often
+BALLOON_SECONDS_EACH = 1    # before an event starts, a juice speech balloon pops up this often...
+BALLOON_HOLD_SECONDS = 3    # ...and they all stay up this long before the starting gun
 
 # ---- avatars -----------------------------------------------------------------------------
 
@@ -82,10 +86,12 @@ ZONES = {
 
 # Prices are a percent of the buyer's cash, so the Koala is cheap for whoever is behind
 KOALA_ITEMS = [
-    {'id': 'kneecaps', 'name': 'Bat to Kneecaps', 'percent': 15,
-     'effect': "Pick a player to reduce their SPD to 0 for the next event"},
-    {'id': 'hgh', 'name': 'HGH Injection', 'percent': 10,
-     'effect': "Pick a player to add 5 to SPD and 5 to STR for the next event"},
+    {'id': 'accident', 'name': 'Have an Accident', 'percent': 15,
+     'effect': "Pick a player to have an accident before the next event: a fall (-2 SPD and "
+               "STR), a car (-4) or a bat to the kneecaps (-6). Equal odds"},
+    {'id': 'juice', 'name': 'Juice', 'percent': 10,
+     'effect': "Pick a player to juice up for the next event: a cup of joe (+2 SPD and STR), "
+               "HGH (+4) or sand lobster venom (+6). Equal odds"},
     {'id': 'bribe', 'name': 'Bribe the Feds', 'percent': 5,
      'effect': "Pick a player for the Kangarules agent to watch: all Shady Koala effects "
                "on that player are negated for the next event"},
@@ -93,6 +99,28 @@ KOALA_ITEMS = [
 KOALA_BY_ID = {item['id']: item for item in KOALA_ITEMS}
 KOALA_MIN_PRICE = 1         # nothing is free, even when you're nearly broke
 KOALA_CHANCE = 0.5          # chance of a visit for anyone who isn't 1st or last
+
+# What an accident or a juice turns out to be, picked at random with equal odds. `change` is
+# added to the target's SPD and STR for the event; `text` is the host screen's flavour text.
+# Accidents make the breaking news before the event, juice shows as speech balloons.
+KOALA_OUTCOMES = {
+    'accident': [
+        {'id': 'fall', 'headline': 'Took a fall', 'change': -2,
+         'text': '{name} took an unfortunate tumble . . .'},
+        {'id': 'car', 'headline': 'Run Over by Car', 'change': -4,
+         'text': '{name} got hit by a car!'},
+        {'id': 'kneecaps', 'headline': 'Bat to Kneecaps', 'change': -6,
+         'text': '{name} took a bat to the kneecaps!'},
+    ],
+    'juice': [
+        {'id': 'joe', 'headline': 'Cup of Joe', 'change': 2, 'text': '{name} is looking peppy.'},
+        {'id': 'hgh', 'headline': 'HGH', 'change': 4, 'text': '{name} is looking jacked.'},
+        {'id': 'venom', 'headline': 'Sand Lobster Venom', 'change': 6,
+         'text': '{name} is looking blistered and twitchy.'},
+    ],
+}
+KOALA_STAT_FLOOR = 0        # accidents can't push a stat below this
+AGAIN = ' [again]'          # added to a headline the player has had before this season
 
 
 def koala_prices(cash):
@@ -114,7 +142,6 @@ def koala_visitors(cash, rng):
         if (top != bottom and amount == bottom) or rng.random() < KOALA_CHANCE:
             visitors.add(pid)
     return visitors
-HGH_BOOST = 5
 
 
 def resolve_koala(purchases, frisked):
@@ -125,8 +152,8 @@ def resolve_koala(purchases, frisked):
 
     Order of operations (later steps can't undo earlier ones):
       1. A frisked buyer loses ALL their purchases (made public on the host screen).
-      2. Surviving bribes protect their targets from every kneecap/HGH.
-      3. Whatever's left applies.
+      2. Surviving bribes protect their targets from every accident/juice.
+      3. Whatever's left applies (roll_koala picks what each one turns out to be).
     Returns {'caught': {buyer: {item: target}}, 'protected': set, 'applied': [(buyer, item, target)],
              'blocked': [(buyer, item, target)]}
     """
@@ -142,16 +169,42 @@ def resolve_koala(purchases, frisked):
     return {'caught': caught, 'protected': protected, 'applied': applied, 'blocked': blocked}
 
 
-def effective_stats(base, applied):
-    """Stats for one event after Shady Koala effects. HGH first, so kneecaps always mean SPD 0."""
+def roll_koala(applied, rng):
+    """What each accident and juice that got through turns out to be (equal odds).
+    Returns [(target, item_id, outcome)], one per purchase, in random order so the host
+    screen can't give away who bought first."""
+    rolled = [(target, item, rng.choice(KOALA_OUTCOMES[item])) for _, item, target in applied]
+    rng.shuffle(rolled)
+    return rolled
+
+
+def koala_headlines(rolled, names, history):
+    """The host screen's lines for rolled Shady Koala effects: {item_id: [line, ...]}, each
+    line {'id', 'headline', 'text', 'change'}. A player who has had the same outcome before
+    this season (including earlier in this list) gets AGAIN on the end. `history` is a
+    Counter of (player_id, outcome_id) for the season, updated here."""
+    lines = {item: [] for item in KOALA_OUTCOMES}
+    for target, item, outcome in rolled:
+        key = (target, outcome['id'])
+        text = outcome['text'].format(name=names[target]) + (AGAIN if history[key] else '')
+        history[key] += 1
+        lines[item].append({'id': target, 'headline': outcome['headline'], 'text': text,
+                            'change': outcome['change']})
+    return lines
+
+
+def effective_stats(base, rolled):
+    """Stats for one event after Shady Koala effects: every outcome's change is added to SPD
+    and STR, then floored at KOALA_STAT_FLOOR (so the order never matters, and a negative
+    stat can't turn a formula like STR x SPD upside down)."""
     stats = {pid: dict(s) for pid, s in base.items()}
-    for _, item, target in applied:
-        if item == 'hgh' and target in stats:
-            stats[target]['spd'] += HGH_BOOST
-            stats[target]['str'] += HGH_BOOST
-    for _, item, target in applied:
-        if item == 'kneecaps' and target in stats:
-            stats[target]['spd'] = 0
+    change = Counter()
+    for target, _, outcome in rolled:
+        change[target] += outcome['change']
+    for pid, delta in change.items():
+        if pid in stats:
+            for key in ('spd', 'str'):
+                stats[pid][key] = max(KOALA_STAT_FLOOR, stats[pid][key] + delta)
     return stats
 
 
@@ -160,9 +213,28 @@ def effective_stats(base, applied):
 # visual: how the host animates it - 'race' (lanes, `direction`), 'elimination' (players drop
 # out in reverse order, `variant` picks the look) or 'turns' (one at a time, score shown with `unit`).
 
+def _whole(numerator, denominator):
+    """numerator / denominator to the nearest whole number, halves up (negatives too), so
+    fractional formulas still give the whole-number scores the host screen shows."""
+    return (2 * numerator + denominator) // (2 * denominator)
+
+
 def _half_court(s, luck):
-    raw = s['str'] * 3 * s['spd'] + s['mcr'] + luck
-    return (raw + 5) // 10   # nearest whole number, halves up (raw is never negative)
+    return _whole(s['str'] * 3 * s['spd'] + s['mcr'] + luck, 10)
+
+
+# STR x 1.5 / x 2 rather than x 10 (2026-11-24): a 10-STR build won Fist Fight, Sand Curling
+# and Sumo every time; now SPD and MCR builds can take Sand Curling and Sumo (tests/balance.py)
+def _fist_fight(s, luck):
+    return _whole(3 * s['str'] - 2 * s['spd'] - 2 * s['mcr'] + 2 * luck, 2)   # STR x 1.5 - SPD - MCR
+
+
+def _sand_curling(s, luck):
+    return _whole(15 * s['str'] + 12 * s['spd'] + 10 * luck, 10)   # STR x 1.5 + SPD x 1.2
+
+
+def _sumo(s, luck):
+    return _whole(4 * s['str'] + 3 * s['mcr'] + 2 * luck, 2)   # STR x 2 + MCR x 1.5
 
 
 EVENTS = {
@@ -173,10 +245,10 @@ EVENTS = {
                    'score': lambda s, l: (s['spd'] + s['str']) + l * 2,
                    'setup': 'First to the top of the walking track wins.'},
     'fist_fight': {'name': 'Fist Fight', 'visual': 'elimination', 'variant': 'brawl',
-                   'score': lambda s, l: s['str'] * 10 - s['spd'] - s['mcr'] + l,
+                   'score': _fist_fight,
                    'setup': 'Last one standing wins. Nobody tell the parents.'},
     'sand_curling': {'name': 'Australian Rules Sand Curling', 'visual': 'turns', 'prop': 'kick',
-                     'unit': 'meters', 'score': lambda s, l: s['str'] * 3 + s['spd'] * 2 + l,
+                     'unit': 'meters', 'score': _sand_curling,
                      'setup': 'Kick the stone as far as you can down the sand.'},
     'mini_golf': {'name': 'Mini Golf', 'visual': 'turns', 'prop': 'golf', 'unit': 'strokes',
                   'lowest_wins': True,
@@ -186,7 +258,7 @@ EVENTS = {
                     'score': lambda s, l: s['spd'] * s['mcr'] + s['str'] + l,
                     'setup': 'Giant foam suits, one lap of the oval.'},
     'sumo': {'name': 'Sumo Wrestle', 'visual': 'elimination', 'variant': 'sumo', 'scale': 2,
-             'score': lambda s, l: s['str'] * 10 + s['mcr'] * 2 + l,
+             'score': _sumo,
              'setup': 'Push everyone else out of the ring.'},
     'half_court': {'name': 'Half-Court Shots', 'visual': 'turns', 'prop': 'shot',
                    'unit': 'half-court makes', 'score': _half_court,
@@ -449,6 +521,16 @@ def perform_seconds(event_id, n_players):
     return 2 + 3 * n_players   # turns
 
 
+def news_seconds(headlines):
+    """How long the breaking news runs (0 headlines: it's skipped)."""
+    return NEWS_LEAD_SECONDS + NEWS_SECONDS_EACH * headlines if headlines else 0
+
+
+def balloon_seconds(balloons):
+    """How long the juice speech balloons hold up the start of the event animation."""
+    return BALLOON_HOLD_SECONDS + BALLOON_SECONDS_EACH * balloons if balloons else 0
+
+
 def client_rules():
     """The numbers the phone and host pages need, sent in every view (one source of truth)."""
     return {
@@ -464,6 +546,8 @@ def client_rules():
         'scalp_max_multiplier': SCALP_MAX_MULTIPLIER, 'auction_opening_bid': AUCTION_OPENING_BID,
         'card_pack_value': list(CARD_PACK_VALUE), 'bet_steps': list(BET_STEPS),
         'winner_cut_percent': WINNER_CUT_PERCENT, 'final_reveal_seconds': FINAL_REVEAL_SECONDS,
+        'news_lead_seconds': NEWS_LEAD_SECONDS, 'news_seconds_each': NEWS_SECONDS_EACH,
+        'balloon_seconds_each': BALLOON_SECONDS_EACH,
     }
 
 

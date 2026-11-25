@@ -294,6 +294,7 @@ const SCREENS = {
     map: view => watch(view, 'On the road...'),
     bet: bet,
     frisk: (view, me) => watchMyRound(view, me, 'The Kangarules Gambling Commission is frisking someone...'),
+    news: (view, me) => watchMyRound(view, me, 'Breaking news on the big screen!'),
     perform: (view, me) => watchMyRound(view, me),
     payout: payoutScreen,
     purse: purse,

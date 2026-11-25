@@ -148,3 +148,18 @@ body.phone { padding: 12px 16px 40px; max-width: 520px; margin: 0 auto; }
 .swatch.on { outline: 3px solid var(--gold); outline-offset: 1px; }
 
 /* ---- art tool ------------------------------------------------------------------------------ */
+
+/* Breaking news (Shady Koala accidents, before the event) */
+.news { max-width: 1100px; margin: 0 auto; }
+.news-banner { background: #b3121f; color: #fff; font-weight: bold; font-size: 1.1rem; letter-spacing: 0.08em;
+    text-transform: uppercase; padding: 10px 18px; border-radius: 6px; display: flex; gap: 18px; align-items: center; }
+.news-banner span { background: #fff; color: #b3121f; padding: 4px 12px; font-size: 1.8rem; border-radius: 4px;
+    animation: blink 1s steps(2, start) infinite; }
+@keyframes blink { 50% { opacity: 0.55; } }
+.news-story { display: flex; gap: 32px; align-items: center; margin: 32px 12px; animation: slide-in 0.45s ease-out; }
+.news-headline { font-size: 3.4rem; text-transform: uppercase; color: var(--gold); line-height: 1.05; }
+.news-wait { text-align: center; margin: 80px 0; }
+.news-earlier { list-style: none; padding: 12px 18px; margin: 0; background: var(--panel); border-left: 6px solid #b3121f;
+    font-size: 1.2rem; color: var(--dim); }
+.news-earlier li { margin: 4px 0; }
+@keyframes slide-in { from { transform: translateX(-60px); opacity: 0; } to { transform: none; opacity: 1; } }

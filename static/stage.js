@@ -375,9 +375,95 @@
 
     function eventScene(view) {
         const visual = view.data.event.visual;
-        if (visual === 'race') return raceScene(view);
-        if (visual === 'elimination') return eliminationScene(view);
-        return turnsScene(view);
+        const run = visual === 'race' ? raceScene(view) : visual === 'elimination' ? eliminationScene(view) : turnsScene(view);
+        const intro = view.data.performance.intro || 0;
+        if (!intro) return run;
+        // Juice first: the event waits at the start while the speech balloons pop up
+        const balloons = balloonsScene(view);
+        return function (c, w, h, t) {
+            run(c, w, h, Math.max(0, t - intro));
+            if (t < intro + BALLOON_FADE) balloons(c, w, h, t, intro);
+        };
+    }
+
+    // ---- juice speech balloons ------------------------------------------------------------------
+
+    const BALLOON_FADE = 0.4, BALLOON_POP = 0.35;
+    const PAPER = '#fffdf2', BALLOON_INK = '#1b1b1b';
+
+    function wrapLines(c, str, maxW) {
+        const lines = [];
+        let line = '';
+        str.split(' ').forEach(word => {
+            const next = line ? line + ' ' + word : word;
+            if (line && c.measureText(next).width > maxW) { lines.push(line); line = word; } else line = next;
+        });
+        if (line) lines.push(line);
+        return lines;
+    }
+
+    /** A cartoon speech balloon whose tail points down-left at (tipX, tipY). */
+    function balloon(c, x, y, bw, bh, tipX, tipY) {
+        const r = Math.min(22, bh / 2);
+        c.beginPath();
+        c.moveTo(x + r, y);
+        c.arcTo(x + bw, y, x + bw, y + bh, r);
+        c.arcTo(x + bw, y + bh, x, y + bh, r);
+        c.lineTo(x + 58, y + bh);
+        c.lineTo(tipX, tipY);
+        c.lineTo(x + 34, y + bh);
+        c.arcTo(x, y + bh, x, y, r);
+        c.arcTo(x, y, x + bw, y, r);
+        c.closePath();
+        c.fillStyle = PAPER;
+        c.fill();
+        c.strokeStyle = BALLOON_INK;
+        c.lineWidth = 3;
+        c.stroke();
+    }
+
+    /** One balloon per juice, in a grid, popping up one after another (rules.balloon_seconds_each). */
+    function balloonsScene(view) {
+        const items = view.data.performance.balloons, rules = view.rules, byId = playersById(view);
+        const each = rules.balloon_seconds_each;
+        return function (c, w, h, t, intro) {
+            const fade = t > intro ? 1 - (t - intro) / BALLOON_FADE : 1;
+            c.save();
+            c.globalAlpha = Math.max(0, fade);
+            c.fillStyle = 'rgba(8,20,13,0.78)';   // the starting line, dimmed behind the balloons
+            c.fillRect(0, 0, w, h);
+            text(c, 'Spotted at the warm-up...', w / 2, 34, 26, {bold: true, color: GOLD});
+            const n = items.length, cols = Math.min(4, n), rows = Math.ceil(n / cols);
+            const slotW = Math.min(420, (w - 40) / cols), slotH = Math.min(220, (h - 90) / rows);
+            const left = (w - slotW * cols) / 2, top = Math.max(70, (h - slotH * rows) / 2 + 20);
+            const headPx = Math.min(56, slotH * 0.3), size = Math.max(14, Math.min(22, slotH * 0.11));
+            items.forEach((b, i) => {
+                const since = t - (0.3 + i * each);
+                if (since < 0) return;
+                const p = byId[b.id];
+                const pop = Math.min(1, since / BALLOON_POP);
+                // Bubble up from below with a little overshoot, then bob gently
+                const scale = 0.4 + 0.6 * pop + Math.sin(Math.PI * pop) * 0.12;
+                const rise = (1 - pop) * 40 - Math.sin(since * 2 + i) * 3;
+                const sx = left + slotW * (i % cols), sy = top + slotH * Math.floor(i / cols);
+                const headX = sx + 12, headY = sy + slotH - headPx - 18;
+                c.font = 'bold ' + size + 'px system-ui, sans-serif';
+                const bw = Math.min(380, slotW - 24), lines = wrapLines(c, b.text, bw - 28);
+                const bh = Math.min(headY - sy - 22, lines.length * size * 1.25 + 24);
+                c.save();
+                c.translate(headX + headPx / 2, headY);
+                c.scale(scale, scale);
+                c.translate(-(headX + headPx / 2), -headY + rise);
+                balloon(c, sx + 4, sy, bw, bh, headX + headPx / 2 + 6, headY - 4);
+                lines.forEach((line, k) => text(c, line, sx + 4 + bw / 2, sy + 12 + size * 0.62 + k * size * 1.25, size,
+                    {bold: true, color: BALLOON_INK}));
+                c.restore();
+                if (p && p.head && p.head.replace(/\./g, '')) PixelArt.draw(c, p.head, rules.palette, rules.pixel_chars, headX, headY, headPx);
+                else figure(c, headX + headPx / 2, headY + headPx, headPx);
+                if (p) text(c, p.name, headX + headPx + 8, headY + headPx / 2, 15, {bold: true, align: 'left'});
+            });
+            c.restore();
+        };
     }
 
     // ---- card pack -----------------------------------------------------------------------------

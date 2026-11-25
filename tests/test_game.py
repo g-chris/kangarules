@@ -150,20 +150,20 @@ class BettingTests(DerbyTestCase):
             self.act(self.ann, 'confirm_bets', bets={})   # must answer the Psst first
         self.act(self.ann, 'koala_open')
         with self.assertRaises(Reject):
-            self.act(self.ann, 'koala_buy', item='hgh', target=[self.bob.id])
-        self.act(self.ann, 'koala_buy', item='kneecaps', target=self.bob.id)
+            self.act(self.ann, 'koala_buy', item='juice', target=[self.bob.id])
+        self.act(self.ann, 'koala_buy', item='accident', target=self.bob.id)
         self.assertEqual(self.ann.private['cash'], 85)   # 15% of $Dd 100
         with self.assertRaises(Reject):
-            self.act(self.ann, 'koala_buy', item='kneecaps', target=self.cat.id)
-        self.assertEqual(self.game.koala_purchases, {self.ann.id: {'kneecaps': self.bob.id}})
+            self.act(self.ann, 'koala_buy', item='accident', target=self.cat.id)
+        self.assertEqual(self.game.koala_purchases, {self.ann.id: {'accident': self.bob.id}})
 
     def test_koala_prices_are_set_when_the_menu_opens(self):
         self.start_at_betting()
         self.ann.private.update(cash=240, koala={'state': 'pending', 'bought': {}})
         self.act(self.ann, 'koala_open')
-        self.assertEqual(self.ann.private['koala']['prices'], {'kneecaps': 36, 'hgh': 24, 'bribe': 12})
-        self.act(self.ann, 'koala_buy', item='kneecaps', target=self.bob.id)
-        self.act(self.ann, 'koala_buy', item='hgh', target=self.ann.id)   # still 24, not 10% of 204
+        self.assertEqual(self.ann.private['koala']['prices'], {'accident': 36, 'juice': 24, 'bribe': 12})
+        self.act(self.ann, 'koala_buy', item='accident', target=self.bob.id)
+        self.act(self.ann, 'koala_buy', item='juice', target=self.ann.id)   # still 24, not 10% of 204
         self.assertEqual(self.ann.private['cash'], 240 - 36 - 24)
 
     def test_leader_never_meets_the_koala_and_last_place_always_does(self):
@@ -180,6 +180,69 @@ class BettingTests(DerbyTestCase):
             game._expire_phase()   # map -> bet
             self.assertNotIn('koala', players[0].private)
             self.assertIn('koala', players[2].private)
+
+    def buy(self, buyer, **items):
+        buyer.private['koala'] = {'state': 'pending', 'bought': {}}
+        self.act(buyer, 'koala_open')
+        for item, target in items.items():
+            self.act(buyer, 'koala_buy', item=item, target=target.id)
+        self.act(buyer, 'koala_exit')
+
+    def lock_in_everyone(self):
+        for p in (self.ann, self.bob, self.cat):
+            self.act(p, 'confirm_bets', bets={})
+
+    def test_accidents_make_the_news_and_juice_pops_up_before_the_event(self):
+        self.start_at_betting()
+        self.buy(self.ann, accident=self.bob, juice=self.cat)
+        self.lock_in_everyone()
+        self.assertEqual(self.game.phase, 'news')
+        news = self.game.public['news']
+        self.assertEqual([line['id'] for line in news], [self.bob.id])
+        self.assertTrue(news[0]['text'].startswith('Bob '), news)
+        self.assertEqual(self.game.timer['duration'], R.news_seconds(1))
+        self.assertNotIn(self.ann.id, repr(news), 'the news must not say who bought it')
+        self.game._expire_phase()
+        self.assertEqual(self.game.phase, 'perform')
+        perf = self.game.public['performance']
+        self.assertEqual([b['id'] for b in perf['balloons']], [self.cat.id])
+        self.assertNotIn(self.ann.id, repr(perf['balloons']))
+        animation = R.perform_seconds(self.game.current_stop()['event'], 3)
+        self.assertEqual((perf['intro'], perf['duration']), (R.balloon_seconds(1), animation))
+        self.assertEqual(self.game.timer['duration'], R.balloon_seconds(1) + animation)
+
+    def test_no_accidents_means_no_news(self):
+        self.start_at_betting()
+        self.buy(self.ann, juice=self.ann)
+        self.lock_in_everyone()
+        self.assertEqual(self.game.phase, 'perform')
+        self.assertEqual(len(self.game.public['performance']['balloons']), 1)
+
+    def test_nothing_bought_starts_the_event_straight_away(self):
+        self.start_at_betting()
+        self.lock_in_everyone()
+        self.assertEqual(self.game.phase, 'perform')
+        perf = self.game.public['performance']
+        self.assertEqual((perf['balloons'], perf['intro']), ([], 0))
+
+    def test_a_bribe_keeps_the_target_out_of_the_news(self):
+        self.start_at_betting()
+        self.buy(self.ann, accident=self.bob, juice=self.bob)
+        self.buy(self.cat, bribe=self.bob)
+        self.lock_in_everyone()
+        self.assertEqual(self.game.phase, 'perform')
+        self.assertEqual(self.game.public['performance']['balloons'], [])
+
+    def test_a_repeat_accident_says_again_all_season_but_not_next_game(self):
+        self.start_at_betting()
+        self.game.koala_history[(self.bob.id, 'fall')] = 1
+        self.game.koala_history[(self.bob.id, 'car')] = 1
+        self.game.koala_history[(self.bob.id, 'kneecaps')] = 1
+        self.buy(self.ann, accident=self.bob)
+        self.lock_in_everyone()
+        self.assertTrue(self.game.public['news'][0]['text'].endswith(' [again]'))
+        self.game.on_start()
+        self.assertEqual(self.game.koala_history, {})
 
     def test_one_fixed_loan_per_betting_event(self):
         self.start_at_betting()

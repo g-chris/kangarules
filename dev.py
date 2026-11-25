@@ -105,7 +105,7 @@ def my_purchases(game):
     me, other = players(game)[:2]
     me.private['koala'] = {'state': 'pending', 'bought': {}}
     act(game, me, 'koala_open', {})   # sets the prices
-    act(game, me, 'koala_buy', {'item': 'kneecaps', 'target': other.id})
+    act(game, me, 'koala_buy', {'item': 'accident', 'target': other.id})
     act(game, me, 'koala_buy', {'item': 'bribe', 'target': me.id})
     act(game, me, 'koala_exit', {})
 
@@ -130,7 +130,35 @@ def frisk(game):
     game.finish_betting()   # the Professional Stadium always frisks someone
     p = players(game)
     game.public['frisks'] = [{'id': p[1].id, 'name': p[1].name, 'caught': [
-        {'item': R.KOALA_BY_ID['kneecaps']['name'], 'target': p[0].name}]}]
+        {'item': R.KOALA_BY_ID['accident']['name'], 'target': p[0].name}]}]
+
+
+def koala_effects(event, buys, repeats=None):
+    """The Shady Koala visits the first players, who buy `buys` (one {item: target index}
+    per buyer); then everyone locks in and the event starts (the news, if there's an accident).
+    repeats: the index of a player who has already had every accident this season ([again])."""
+    def setup(game):
+        betting(event)(game)
+        p = players(game)
+        if repeats is not None:
+            for outcome in R.KOALA_OUTCOMES['accident']:
+                game.koala_history[(p[repeats].id, outcome['id'])] = 1
+        for buyer, items in zip(p, buys):
+            buyer.private['koala'] = {'state': 'pending', 'bought': {}}
+            act(game, buyer, 'koala_open', {})
+            for item, target in items.items():
+                act(game, buyer, 'koala_buy', {'item': item, 'target': p[target].id})
+        for q in p:
+            if q.private.get('koala'):
+                act(game, q, 'koala_exit', {})
+            act(game, q, 'confirm_bets', {'bets': {}})
+        if game.phase == 'frisk':
+            game.frisk_done()
+    return setup
+
+
+# Two accidents on the same player and one on another; juice for three
+NEWS_BUYS = [{'accident': 1, 'juice': 0}, {'accident': 1, 'juice': 2}, {'accident': 3, 'juice': 3}]
 
 
 def payout(game):
@@ -210,7 +238,7 @@ def case_voter(game):
 def koala_open(game):
     betting('foot_race')(game)
     me = players(game)[0]
-    me.private['cash'] = 240   # prices are a percent of cash: kneecaps $Dd 36
+    me.private['cash'] = 240   # prices are a percent of cash: accident $Dd 36
     me.private['koala'] = {'state': 'pending', 'bought': {}}
     act(game, me, 'koala_open', {})
 
@@ -226,6 +254,13 @@ SCREENS = [
            group='Betting') for stop in GAMBLES
 ] + [
     Screen('frisk', 'Random frisk', setup=frisk, group='Betting'),
+    Screen('news-first', 'Breaking news (first headline)', setup=koala_effects('foot_race', NEWS_BUYS, repeats=3),
+           elapsed=R.NEWS_LEAD_SECONDS + 1, group='Betting'),
+    Screen('news', 'Breaking news (every headline)', setup=koala_effects('foot_race', NEWS_BUYS, repeats=3),
+           elapsed=R.news_seconds(3) - 1, group='Betting'),
+    Screen('perform-balloons', 'Juice speech balloons (before the event)',
+           setup=koala_effects('fist_fight', [{'juice': 0}, {'juice': 1}, {'juice': 2}, {'juice': 0}]),
+           elapsed=R.balloon_seconds(4) - 2.5, group='Events'),
     Screen('payout', 'Payout', setup=payout, group='Betting'),
 ] + [
     Screen(f"perform-{stop['event']}", R.EVENTS[stop['event']]['name'], setup=performing(stop['event']),
@@ -252,6 +287,7 @@ SCREENS = [
         ('phone-koala', 'Shady Koala', koala_open, None, 0),
         ('phone-bet-locked', 'Bets locked in', betting('foot_race', my_bets), None, 0),
         ('phone-watch', 'Watch the big screen (with my bets)', watching_my_bets, None, 0),
+        ('phone-news', 'Breaking news (with my purchases)', koala_effects('foot_race', NEWS_BUYS, repeats=3), None, 0),
         ('phone-payout', 'Payout', payout, None, 0),
         ('phone-purse', "Mother's Purse", special('mothers_purse'), None, 0),
         ('phone-auction', 'Card auction', special('card_auction', auction_bid), None, 0),

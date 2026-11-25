@@ -35,11 +35,11 @@ class ScoringTests(unittest.TestCase):
         expected = {
             'foot_race': 5 * 10 - 2 + 4,
             'speed_hike': (5 + 2) + 4 * 2,
-            'fist_fight': 2 * 10 - 5 - 3 + 4,
-            'sand_curling': 2 * 3 + 5 * 2 + 4,
+            'fist_fight': -1,     # 2*1.5 - 5 - 3 + 4 = -1
+            'sand_curling': 13,   # 2*1.5 + 5*1.2 + 4 = 13
             'mini_golf': 100 + 2 - 5 * 2 - 3 * 4 - 4,
             'mascot_race': 5 * 3 + 2 + 4,
-            'sumo': 2 * 10 + 3 * 2 + 4,
+            'sumo': 13,           # 2*2 + 3*1.5 + 4 = 12.5 -> 13
             'half_court': 4,   # (2*3*5 + 3 + 4) / 10 = 3.7 -> 4
             'note': (2 + 4) * 2 + 5 + 4 + 3 * 4,
         }
@@ -49,6 +49,12 @@ class ScoringTests(unittest.TestCase):
     def test_half_court_rounds_halves_up(self):
         self.assertEqual(R.EVENTS['half_court']['score'](stats(mcr=4), 1), 1)   # 5/10 -> 1
         self.assertEqual(R.EVENTS['half_court']['score'](stats(mcr=3), 1), 0)   # 4/10 -> 0
+
+    def test_fractional_formulas_round_halves_up(self):
+        self.assertEqual(R.EVENTS['fist_fight']['score'](stats(str_=1), 1), 3)     # 2.5 -> 3
+        self.assertEqual(R.EVENTS['fist_fight']['score'](stats(str_=1, spd=5), 1), -2)   # -2.5 -> -2
+        self.assertEqual(R.EVENTS['sand_curling']['score'](stats(spd=1), 1), 2)   # 2.2 -> 2
+        self.assertEqual(R.EVENTS['sumo']['score'](stats(mcr=1), 1), 3)           # 2.5 -> 3
 
     def test_lowest_score_wins_mini_golf(self):
         field = {'good': stats(spd=5, mcr=5), 'bad': stats(str_=10)}
@@ -120,35 +126,78 @@ class OddsTests(unittest.TestCase):
 class KoalaTests(unittest.TestCase):
     base = {'a': stats(spd=5, str_=1), 'b': stats(spd=5, str_=1), 'c': stats(spd=5, str_=1)}
 
-    def test_kneecaps_and_hgh(self):
-        res = R.resolve_koala({'a': {'kneecaps': 'b', 'hgh': 'a'}}, frisked=set())
-        eff = R.effective_stats(self.base, res['applied'])
-        self.assertEqual(eff['b']['spd'], 0)
-        self.assertEqual((eff['a']['spd'], eff['a']['str']), (10, 6))
+    @staticmethod
+    def outcome(item, outcome_id):
+        return next(o for o in R.KOALA_OUTCOMES[item] if o['id'] == outcome_id)
+
+    def test_accidents_and_juice_have_three_outcomes_at_equal_odds(self):
+        self.assertEqual([o['change'] for o in R.KOALA_OUTCOMES['accident']], [-2, -4, -6])
+        self.assertEqual([o['change'] for o in R.KOALA_OUTCOMES['juice']], [2, 4, 6])
+        seen = Counter()
+        rng = random.Random(5)
+        for _ in range(900):
+            for _, item, outcome in R.roll_koala([('a', 'accident', 'b'), ('a', 'juice', 'c')], rng):
+                seen[outcome['id']] += 1
+        self.assertEqual(set(seen), {'fall', 'car', 'kneecaps', 'joe', 'hgh', 'venom'})
+        self.assertTrue(all(250 < n < 350 for n in seen.values()), seen)
+
+    def test_roll_keeps_each_target_and_item(self):
+        rolled = R.roll_koala([('a', 'accident', 'b'), ('c', 'juice', 'a')], random.Random(1))
+        self.assertEqual(sorted((t, i) for t, i, _ in rolled), [('a', 'juice'), ('b', 'accident')])
+
+    def test_outcomes_change_speed_and_strength(self):
+        rolled = [('b', 'accident', self.outcome('accident', 'fall')),
+                  ('a', 'juice', self.outcome('juice', 'venom'))]
+        eff = R.effective_stats(self.base, rolled)
+        self.assertEqual((eff['b']['spd'], eff['b']['str']), (3, 0))   # STR 1 - 2 stops at 0
+        self.assertEqual((eff['a']['spd'], eff['a']['str']), (11, 7))
+        self.assertEqual(eff['a']['mcr'], self.base['a']['mcr'])
         self.assertEqual(self.base['a']['spd'], 5, 'base stats must not change')
 
-    def test_kneecaps_beat_hgh_on_the_same_player(self):
-        res = R.resolve_koala({'a': {'kneecaps': 'c'}, 'b': {'hgh': 'c'}}, frisked=set())
-        eff = R.effective_stats(self.base, res['applied'])
-        self.assertEqual((eff['c']['spd'], eff['c']['str']), (0, 6))
+    def test_outcomes_on_one_player_stack_before_the_floor(self):
+        # -6 then +4: summed first (5 - 6 + 4 = 3), so the order they're applied never matters
+        rolled = [('c', 'accident', self.outcome('accident', 'kneecaps')),
+                  ('c', 'juice', self.outcome('juice', 'hgh'))]
+        self.assertEqual(R.effective_stats(self.base, rolled)['c']['spd'], 3)
+        self.assertEqual(R.effective_stats(self.base, rolled[::-1])['c']['spd'], 3)
+        two_cars = [('c', 'accident', self.outcome('accident', 'car'))] * 2
+        self.assertEqual(R.effective_stats(self.base, two_cars)['c']['spd'], 0)
+
+    def test_headlines_split_by_item_and_say_again_for_a_repeat(self):
+        names = {'a': 'Shazza', 'b': 'Davo'}
+        history = Counter()
+        car, joe = self.outcome('accident', 'car'), self.outcome('juice', 'joe')
+        lines = R.koala_headlines([('a', 'accident', car), ('a', 'juice', joe), ('a', 'accident', car),
+                                   ('b', 'accident', car)], names, history)
+        self.assertEqual([line['text'] for line in lines['accident']],
+                         ['Shazza got hit by a car!', 'Shazza got hit by a car! [again]', 'Davo got hit by a car!'])
+        self.assertEqual(lines['juice'], [{'id': 'a', 'headline': 'Cup of Joe', 'change': 2,
+                                           'text': 'Shazza is looking peppy.'}])
+        # ...and in a later event of the same season
+        later = R.koala_headlines([('b', 'accident', car)], names, history)
+        self.assertEqual(later['accident'][0]['text'], 'Davo got hit by a car! [again]')
+        fall = self.outcome('accident', 'fall')
+        self.assertEqual(R.koala_headlines([('b', 'accident', fall)], names, history)['accident'][0]['text'],
+                         'Davo took an unfortunate tumble . . .')
 
     def test_bribe_protects_target_from_everyone(self):
-        res = R.resolve_koala({'a': {'kneecaps': 'c'}, 'c': {'bribe': 'c'}, 'b': {'hgh': 'c'}},
+        res = R.resolve_koala({'a': {'accident': 'c'}, 'c': {'bribe': 'c'}, 'b': {'juice': 'c'}},
                               frisked=set())
         self.assertEqual(res['applied'], [])
         self.assertEqual(len(res['blocked']), 2)
-        self.assertEqual(R.effective_stats(self.base, res['applied'])['c'], self.base['c'])
+        rolled = R.roll_koala(res['applied'], random.Random(2))
+        self.assertEqual(R.effective_stats(self.base, rolled)['c'], self.base['c'])
 
     def test_frisk_negates_all_purchases_including_bribes(self):
-        purchases = {'a': {'kneecaps': 'b'}, 'b': {'bribe': 'b', 'hgh': 'b'}}
+        purchases = {'a': {'accident': 'b'}, 'b': {'bribe': 'b', 'juice': 'b'}}
         res = R.resolve_koala(purchases, frisked={'b'})
-        self.assertEqual(res['caught'], {'b': {'bribe': 'b', 'hgh': 'b'}})
-        self.assertEqual(res['applied'], [('a', 'kneecaps', 'b')])   # b's bribe was confiscated
+        self.assertEqual(res['caught'], {'b': {'bribe': 'b', 'juice': 'b'}})
+        self.assertEqual(res['applied'], [('a', 'accident', 'b')])   # b's bribe was confiscated
 
     def test_prices_are_a_percent_of_the_buyers_cash(self):
-        self.assertEqual(R.koala_prices(100), {'kneecaps': 15, 'hgh': 10, 'bribe': 5})
-        self.assertEqual(R.koala_prices(1999), {'kneecaps': 299, 'hgh': 199, 'bribe': 99})
-        self.assertEqual(R.koala_prices(0), {'kneecaps': 1, 'hgh': 1, 'bribe': 1})   # never free
+        self.assertEqual(R.koala_prices(100), {'accident': 15, 'juice': 10, 'bribe': 5})
+        self.assertEqual(R.koala_prices(1999), {'accident': 299, 'juice': 199, 'bribe': 99})
+        self.assertEqual(R.koala_prices(0), {'accident': 1, 'juice': 1, 'bribe': 1})   # never free
 
     def test_visits_go_to_whoever_is_behind(self):
         cash = {'first': 500, 'mid1': 200, 'mid2': 200, 'last': 10}
@@ -171,9 +220,9 @@ class KoalaTests(unittest.TestCase):
         self.assertTrue(all(150 < level[p] < 250 for p in 'ab'), level)
 
     def test_frisking_a_clean_player_catches_nothing(self):
-        res = R.resolve_koala({'a': {'hgh': 'a'}}, frisked={'b'})
+        res = R.resolve_koala({'a': {'juice': 'a'}}, frisked={'b'})
         self.assertEqual(res['caught'], {})
-        self.assertEqual(res['applied'], [('a', 'hgh', 'a')])
+        self.assertEqual(res['applied'], [('a', 'juice', 'a')])
 
 
 class SpecialEventTests(unittest.TestCase):

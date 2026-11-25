@@ -4,7 +4,7 @@ const {esc, head, dd, byId, finalReveal, art, stopTitle} = Common;
 
 const $ = id => document.getElementById(id);
 let joinUrl = '';
-let revealTimer = null;
+let paceTimer = null;
 
 Stage.mount($('stage'));
 // Red with a single beep at rules.timer_warning seconds left, while players are choosing
@@ -30,6 +30,12 @@ function fill(above, below, caption) {
 
 function elapsedInTimer(view) {
     return view.timer ? view.timer.duration - view.timer.remaining : 0;
+}
+
+/** Draw a timed screen again in `ms`, if it's still showing (screens revealed in beats). */
+function paceAgain(ms, phase, draw) {
+    clearTimeout(paceTimer);
+    paceTimer = setTimeout(() => apge.view && apge.view.phase === phase && draw(apge.view), ms);
 }
 
 /** Who has locked in, as a row of heads with ticks (never what they chose). Continue screens
@@ -97,6 +103,11 @@ const SCREENS = {
                 : '<p class="gold">Clean as a whistle.</p>') + '</div>').join('');
         fill(`<div class="center">${art('agent_kevin', 'agent')}
               <h2>Random frisk!</h2><div class="frisks">${rows}</div></div>`);
+    },
+
+    news(view) {
+        layout('board');
+        renderNews(view);
     },
 
     perform(view) {
@@ -222,6 +233,30 @@ const SCREENS = {
     },
 };
 
+// Breaking news: the banner, then one Shady Koala accident every rules.news_seconds_each,
+// paced from the phase timer so a reload picks up where it was
+function renderNews(view) {
+    const items = view.data.news, rules = view.rules, players = byId(view);
+    const elapsed = view.timer ? view.timer.duration - (apge.timeRemaining() || 0) : 0;
+    const since = elapsed - rules.news_lead_seconds;
+    const shown = Math.max(0, Math.min(items.length, Math.floor(since / rules.news_seconds_each) + 1));
+    const latest = items[shown - 1];
+    const lede = latest
+        ? `<div class="news-story">${head(players[latest.id], rules, 140)}<div>
+              <h1 class="news-headline">${esc(latest.headline)}</h1><p class="huge">${esc(latest.text)}</p>
+              <p class="red big">SPD ${latest.change} · STR ${latest.change}</p></div></div>`
+        : '<p class="huge news-wait">We interrupt this broadcast...</p>';
+    const earlier = items.slice(0, Math.max(0, shown - 1)).reverse().map(n => `<li>${esc(n.text)}</li>`).join('');
+    fill(`<div class="news">
+            <div class="news-banner"><span>BREAKING NEWS</span>Kangarules Sports Network · LIVE</div>
+            ${lede}
+            ${earlier ? `<ul class="news-earlier">${earlier}</ul>` : ''}
+          </div>`);
+    if (shown < items.length) {
+        paceAgain(Math.max(50, (rules.news_lead_seconds + shown * rules.news_seconds_each - elapsed) * 1000 + 30), 'news', renderNews);
+    }
+}
+
 // Final results are revealed in beats: standings last place first, then the loansharks
 // collect, then the winner and awards.
 function renderFinal(view) {
@@ -247,8 +282,7 @@ function renderFinal(view) {
     }
     $('above').innerHTML = html + '</div>';
     $('below').innerHTML = '';
-    clearTimeout(revealTimer);
-    if (beat <= winner) revealTimer = setTimeout(() => apge.view && apge.view.phase === 'game_over' && renderFinal(apge.view), 500);
+    if (beat <= winner) paceAgain(500, 'game_over', renderFinal);
 }
 
 function renderControls(view) {

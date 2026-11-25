@@ -5,7 +5,9 @@ Flow (one season stop at a time; rules.build_season shuffles the stops each game
 
     lobby (draw head, spend skill points) -> map -> stop -> map -> stop ... -> game_over
 
-    gambling stop:  bet -> [frisk] -> perform -> payout
+    gambling stop:  bet -> [frisk] -> [news] -> perform -> payout
+                    (news: Shady Koala accidents as breaking news; juice shows as speech
+                    balloons at the start of perform)
     specials:       purse -> purse_result
                     auction -> auction_open -> auction_result
                     case -> case_result
@@ -16,14 +18,15 @@ player.private. Money from an event is only applied when its result screen opens
 phone's cash total never spoils a race that's still running on the big screen.
 """
 import random
+from collections import Counter
 
 from apge import LOBBY, Game, Reject, action, on_all_ready, on_timeout, phase
 
 import rules as R
 
 # Per-stop state, cleared every time the map is shown
-ROUND_PUBLIC = ('event', 'odds', 'frisks', 'performance', 'payout', 'purse', 'auction', 'case',
-                'scalp')
+ROUND_PUBLIC = ('event', 'odds', 'frisks', 'news', 'performance', 'payout', 'purse', 'auction',
+                'case', 'scalp')
 ROUND_PRIVATE = ('bets', 'koala', 'choice', 'forced', 'vote', 'case_value', 'ask', 'last',
                  'loan_taken')
 
@@ -36,7 +39,7 @@ FINISH_WHEN_ALL_DONE = {
 }
 
 # Nobody is choosing anything here, so the host timer never warns (no red, no beep)
-WATCH_PHASES = ('map', 'frisk', 'perform', 'auction_open')
+WATCH_PHASES = ('map', 'frisk', 'news', 'perform', 'auction_open')
 
 SPECIAL_FIRST_PHASE = {
     'mothers_purse': 'purse',
@@ -85,6 +88,7 @@ class Derby(Game):
         self.odds = {}
         self.koala_purchases = {}  # {buyer_id: {item_id: target_id}} - server only
         self.outcome = None        # finishing order etc. for the current gambling event
+        self.koala_history = Counter()   # (player_id, outcome_id) seen this season, for [again]
         self.case_secret = None    # {'holder', 'value'} - server only
 
     # ---- views -----------------------------------------------------------------
@@ -140,6 +144,7 @@ class Derby(Game):
                 self.finish_order.append(p.id)
             p.private.update(cash=R.STARTING_CASH, borrowed=0, bets_won=0, money_lost=0)
         self.season = R.build_season(self.rng)
+        self.koala_history = Counter()
         self.public['season'] = R.season_map(self.season)
         self.public['stop'] = -1
         self.next_stop()
@@ -330,13 +335,19 @@ class Derby(Game):
         ids = list(self.players)
         frisked = set(self.rng.sample(ids, min(R.ZONES[stop['zone']]['frisks'], len(ids))))
         koala = R.resolve_koala(self.koala_purchases, frisked)
-        stats = R.effective_stats(self.base_stats(), koala['applied'])
+        # (a target kicked since the purchase has nobody left to hit)
+        rolled = R.roll_koala([a for a in koala['applied'] if a[2] in self.players], self.rng)
+        stats = R.effective_stats(self.base_stats(), rolled)
         order, scores, tiebroken = R.rank(stats, stop['event'], self.rng)
-        self.outcome = {'order': order, 'scores': scores, 'tiebroken': tiebroken}
+        names = {pid: p.name for pid, p in self.players.items()}
+        # Who was hit or juiced (and with what) goes public; who paid for it never does
+        lines = R.koala_headlines(rolled, names, self.koala_history)
+        self.outcome = {'order': order, 'scores': scores, 'tiebroken': tiebroken,
+                        'news': lines['accident'], 'balloons': lines['juice']}
         if not frisked:
-            self.start_perform()
+            self.break_news()
             return
-        name = lambda pid: self.players[pid].name  # noqa: E731
+        name = names.get
         self.public['frisks'] = [
             {'id': pid, 'name': name(pid),
              'caught': [{'item': R.KOALA_BY_ID[item]['name'], 'target': name(target)}
@@ -350,18 +361,38 @@ class Derby(Game):
 
     @on_timeout('frisk')
     def frisk_done(self):
+        self.break_news()
+
+    def break_news(self):
+        """Accidents make the breaking news before the event; with none, straight to it."""
+        news = self.outcome['news']
+        if news:
+            self.goto('news', timer=R.news_seconds(len(news)))
+        else:
+            self.start_perform()
+
+    @phase('news')
+    def enter_news(self):
+        self.public['news'] = self.outcome['news']
+
+    @on_timeout('news')
+    def news_done(self):
         self.start_perform()
 
     def start_perform(self):
-        n = len(self.players)
-        self.goto('perform', timer=R.perform_seconds(self.current_stop()['event'], n))
+        o = self.outcome
+        o['animation'] = R.perform_seconds(self.current_stop()['event'], len(self.players))
+        o['intro'] = R.balloon_seconds(len(o['balloons']))
+        self.goto('perform', timer=o['intro'] + o['animation'])
 
     @phase('perform')
     def enter_perform(self):
         o = self.outcome
+        # The juice speech balloons pop up over the starting line for `intro` seconds, then the
+        # event runs for `duration`
         self.public['performance'] = {
             'order': o['order'], 'scores': o['scores'], 'tiebroken': sorted(o['tiebroken']),
-            'duration': self.timer['duration'] if self.timer else 0}
+            'balloons': o['balloons'], 'intro': o['intro'], 'duration': o['animation']}
 
     @on_timeout('perform')
     def perform_done(self):

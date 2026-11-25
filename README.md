@@ -81,5 +81,6 @@ Art is saved in `art/`; commit it. Anything without a version in game shows its
 | `tests/test_bots.py` | Bots play whole seasons: `python tests/test_bots.py --quick` |
 | `tests/test_dev.py` | Every sample screen builds; the art list matches what the JS draws |
 | `tests/test_dev_browser.py` | Playwright drives Developer Mode (draw, save, Save As, import) and loads every sample screen |
+| `tests/balance.py` | Not a test: win rates per event for skill builds over simulated seasons, e.g. `python tests/balance.py --build 10/1/1 --build 1/10/1 --build 1/1/10` |
 | `tests/test_browser.py` | Playwright drives the real pages: `pip install playwright && python -m playwright install chromium`, then `python tests/test_browser.py --shots shots/` |
 | `ChangeLog.txt` | Version history |

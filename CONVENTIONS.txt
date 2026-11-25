@@ -160,6 +160,16 @@ the strategy is:
 - Draft: "[again]" is added when that player has had the same outcome
   before this season (earlier events or earlier in the same news), on
   accidents only, as asked; it resets for a new game.
+- Strength was overpowered (tests/balance.py: 10/1/1 won 3 events every
+  season outright). New formulas, rounded halves up to whole numbers:
+  Fist Fight STR x 1.5 - SPD - MCR + LUCK; Sand Curling STR x 1.5 + SPD x
+  1.2 + LUCK; Sumo STR x 2 + MCR x 1.5 + LUCK. Each stat keeps one event its
+  specialist always wins (Fist Fight, Foot Race, Mini Golf) and STR keeps
+  a small edge on purpose: it's a betting game, not a build-crafting one.
+  LUCK stays 1-10 (1-15 was tried: it barely moved the locked events and
+  would flatten the odds everywhere).
+- Balance changes go through tests/balance.py first: try them as PROPOSED
+  formulas, compare, then move them into rules.EVENTS.
 
 -- WORKING TOGETHER ---------------------------------------------------------
 

@@ -17,8 +17,17 @@ are now a gamble, and everyone gets to see what happened (but never who paid for
 - **Speech balloons**: when the event screen opens, a cartoon speech balloon pops up for
   every juice ("Shazza is looking jacked.") before the starting gun
 - Effects on the same player add up, and SPEED and STRENGTH never go below 0
+- **Strength rebalanced**: an all-STRENGTH character won Fist Fight, Sand Curling and Sumo
+  every time, which left three events per season with the same odds. Fist Fight is now
+  STR x 1.5 - SPD - MCR + LUCK, Sand Curling STR x 1.5 + SPD x 1.2 + LUCK, and Sumo
+  STR x 2 + MCR x 1.5 + LUCK (rounded to whole numbers, halves up). Strength still owns Fist
+  Fight; a speed build now takes about a third of Sand Curlings and a moral courage build a
+  tenth of Sumos. Strength keeps a slight edge overall
 
 ### Packaging / Internal
+- tests/balance.py: pits skill builds against each other over thousands of simulated
+  seasons (no Shady Koala, no betting) and prints each build's win rate per event. Try
+  formula changes with --proposed and wider LUCK with --luck-high
 - rules.KOALA_OUTCOMES, roll_koala, koala_headlines, news_seconds, balloon_seconds;
   effective_stats takes rolled outcomes. Item ids are now accident / juice / bribe
 - New `news` phase between frisk and perform (skipped with no accidents); the perform
@@ -27,7 +36,7 @@ are now a gamble, and everyone gets to see what happened (but never who paid for
   and the phone during the news
 - Tests: outcome odds, stacking and the 0 floor, [again] across events and new games,
   the news flow and that it never names the buyer; the browser test buys an accident
-  and juice and checks the news and balloon screens
+  and juice and checks the news and balloon screens; the new formulas and their rounding
 
 ## Version 0.4.0 (2026-11-24)
 

@@ -35,11 +35,11 @@ class ScoringTests(unittest.TestCase):
         expected = {
             'foot_race': 5 * 10 - 2 + 4,
             'speed_hike': (5 + 2) + 4 * 2,
-            'fist_fight': 2 * 10 - 5 - 3 + 4,
-            'sand_curling': 2 * 3 + 5 * 2 + 4,
+            'fist_fight': -1,     # 2*1.5 - 5 - 3 + 4 = -1
+            'sand_curling': 13,   # 2*1.5 + 5*1.2 + 4 = 13
             'mini_golf': 100 + 2 - 5 * 2 - 3 * 4 - 4,
             'mascot_race': 5 * 3 + 2 + 4,
-            'sumo': 2 * 10 + 3 * 2 + 4,
+            'sumo': 13,           # 2*2 + 3*1.5 + 4 = 12.5 -> 13
             'half_court': 4,   # (2*3*5 + 3 + 4) / 10 = 3.7 -> 4
             'note': (2 + 4) * 2 + 5 + 4 + 3 * 4,
         }
@@ -49,6 +49,12 @@ class ScoringTests(unittest.TestCase):
     def test_half_court_rounds_halves_up(self):
         self.assertEqual(R.EVENTS['half_court']['score'](stats(mcr=4), 1), 1)   # 5/10 -> 1
         self.assertEqual(R.EVENTS['half_court']['score'](stats(mcr=3), 1), 0)   # 4/10 -> 0
+
+    def test_fractional_formulas_round_halves_up(self):
+        self.assertEqual(R.EVENTS['fist_fight']['score'](stats(str_=1), 1), 3)     # 2.5 -> 3
+        self.assertEqual(R.EVENTS['fist_fight']['score'](stats(str_=1, spd=5), 1), -2)   # -2.5 -> -2
+        self.assertEqual(R.EVENTS['sand_curling']['score'](stats(spd=1), 1), 2)   # 2.2 -> 2
+        self.assertEqual(R.EVENTS['sumo']['score'](stats(mcr=1), 1), 3)           # 2.5 -> 3
 
     def test_lowest_score_wins_mini_golf(self):
         field = {'good': stats(spd=5, mcr=5), 'bad': stats(str_=10)}

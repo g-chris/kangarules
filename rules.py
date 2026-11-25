@@ -213,9 +213,28 @@ def effective_stats(base, rolled):
 # visual: how the host animates it - 'race' (lanes, `direction`), 'elimination' (players drop
 # out in reverse order, `variant` picks the look) or 'turns' (one at a time, score shown with `unit`).
 
+def _whole(numerator, denominator):
+    """numerator / denominator to the nearest whole number, halves up (negatives too), so
+    fractional formulas still give the whole-number scores the host screen shows."""
+    return (2 * numerator + denominator) // (2 * denominator)
+
+
 def _half_court(s, luck):
-    raw = s['str'] * 3 * s['spd'] + s['mcr'] + luck
-    return (raw + 5) // 10   # nearest whole number, halves up (raw is never negative)
+    return _whole(s['str'] * 3 * s['spd'] + s['mcr'] + luck, 10)
+
+
+# STR x 1.5 / x 2 rather than x 10 (2026-11-24): a 10-STR build won Fist Fight, Sand Curling
+# and Sumo every time; now SPD and MCR builds can take Sand Curling and Sumo (tests/balance.py)
+def _fist_fight(s, luck):
+    return _whole(3 * s['str'] - 2 * s['spd'] - 2 * s['mcr'] + 2 * luck, 2)   # STR x 1.5 - SPD - MCR
+
+
+def _sand_curling(s, luck):
+    return _whole(15 * s['str'] + 12 * s['spd'] + 10 * luck, 10)   # STR x 1.5 + SPD x 1.2
+
+
+def _sumo(s, luck):
+    return _whole(4 * s['str'] + 3 * s['mcr'] + 2 * luck, 2)   # STR x 2 + MCR x 1.5
 
 
 EVENTS = {
@@ -226,10 +245,10 @@ EVENTS = {
                    'score': lambda s, l: (s['spd'] + s['str']) + l * 2,
                    'setup': 'First to the top of the walking track wins.'},
     'fist_fight': {'name': 'Fist Fight', 'visual': 'elimination', 'variant': 'brawl',
-                   'score': lambda s, l: s['str'] * 10 - s['spd'] - s['mcr'] + l,
+                   'score': _fist_fight,
                    'setup': 'Last one standing wins. Nobody tell the parents.'},
     'sand_curling': {'name': 'Australian Rules Sand Curling', 'visual': 'turns', 'prop': 'kick',
-                     'unit': 'meters', 'score': lambda s, l: s['str'] * 3 + s['spd'] * 2 + l,
+                     'unit': 'meters', 'score': _sand_curling,
                      'setup': 'Kick the stone as far as you can down the sand.'},
     'mini_golf': {'name': 'Mini Golf', 'visual': 'turns', 'prop': 'golf', 'unit': 'strokes',
                   'lowest_wins': True,
@@ -239,7 +258,7 @@ EVENTS = {
                     'score': lambda s, l: s['spd'] * s['mcr'] + s['str'] + l,
                     'setup': 'Giant foam suits, one lap of the oval.'},
     'sumo': {'name': 'Sumo Wrestle', 'visual': 'elimination', 'variant': 'sumo', 'scale': 2,
-             'score': lambda s, l: s['str'] * 10 + s['mcr'] * 2 + l,
+             'score': _sumo,
              'setup': 'Push everyone else out of the ring.'},
     'half_court': {'name': 'Half-Court Shots', 'visual': 'turns', 'prop': 'shot',
                    'unit': 'half-court makes', 'score': _half_court,

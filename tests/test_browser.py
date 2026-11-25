@@ -178,11 +178,13 @@ def main(shots=None):
         check.shot(visited[0], 'phone-psst')
         tap(visited[0], '.psst')
         check.shot(visited[0], 'phone-koala')
-        assert '$Dd 9' in visited[0].inner_text('.sheet'), 'kneecaps should cost 15% of $Dd 60'
-        tap(visited[0], '[data-act=koala-item][data-item=hgh]')
-        tap(visited[0], '[data-act=koala-target]', 0)
+        assert '$Dd 9' in visited[0].inner_text('.sheet'), 'an accident should cost 15% of $Dd 60'
+        tap(visited[0], '[data-act=koala-item][data-item=juice]')
+        tap(visited[0], '[data-act=koala-target]', 0)   # Shazza gets juiced...
+        tap(visited[0], '[data-act=koala-item][data-item=accident]')
+        tap(visited[0], '[data-act=koala-target]', 1)   # ...and Davo has an accident
         tap(visited[0], '[data-act=koala-exit]')
-        assert 'HGH Injection' in visited[0].inner_text('#screen'), 'koala purchase not on the slip'
+        assert 'Juice' in visited[0].inner_text('#screen'), 'koala purchase not on the slip'
         if phones[1].locator('.psst').count():   # Davo, in the middle, gets a coin flip
             tap(phones[1], '.psst')
             tap(phones[1], '[data-act=koala-exit]')
@@ -197,11 +199,21 @@ def main(shots=None):
         bets = [game.player_by_name(n).private.get('bets') for n in NAMES]
         ids = [game.player_by_name(n).id for n in NAMES]
         assert bets == [{ids[0]: 10}, {ids[1]: 20}, {ids[2]: 3}], f'step buttons bet wrong: {bets}'
+        # The accident makes the breaking news; the juice pops up as a balloon at the start
+        wait_phase(game, 'news')
+        time.sleep(R.NEWS_LEAD_SECONDS + 0.3)
+        news = host.inner_text('#above')
+        assert 'BREAKING NEWS' in news.upper() and 'Davo' in news, f'no accident headline: {news}'
+        assert 'Kylie' not in news, 'the news gave away who paid for the accident'
+        check.shot(host, 'host-news')
+        assert 'Breaking news' in phones[0].inner_text('#screen'), 'phone not pointing at the news'
         wait_phase(game, 'perform')
         assert 'Your bets' in phones[1].inner_text('#screen'), 'phone hides its bets during the race'
-        assert 'HGH Injection' in visited[0].inner_text('#screen'), 'koala purchase hidden during the race'
+        assert 'Juice' in visited[0].inner_text('#screen'), 'koala purchase hidden during the race'
         check.shot(phones[1], 'phone-watch-bets')
-        time.sleep(5.5)
+        time.sleep(1.5)
+        check.shot(host, 'host-balloons')
+        time.sleep(R.balloon_seconds(1) + 4)
         check.shot(host, 'host-race')
         wait_phase(game, 'payout')
         check.shot(host, 'host-payout')

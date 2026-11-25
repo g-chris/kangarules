@@ -33,10 +33,13 @@ Until APGE v0.3.0 is tagged on GitHub, install the engine from a local checkout 
   whoever they like, or nobody, in steps of $Dd 1, 10 or 100. You start with $Dd 100.
   Whoever wins the event takes 10% of the winnings on every winning bet.
 - **The season** is 13 stops, and the events come in a different order every game.
-- **Shady Koala**: some players get a "Psst!" and can buy a Bat to Kneecaps, an HGH
-  Injection or Bribe the Feds, priced at 15%, 10% and 5% of the cash you're holding. The
-  Koala never visits whoever is in 1st place, always visits last place, and visits
-  everyone else half the time.
+- **Shady Koala**: some players get a "Psst!" and can buy Have an Accident, Juice or
+  Bribe the Feds, priced at 15%, 10% and 5% of the cash you're holding. An accident is a
+  fall, a car or a bat to the kneecaps (-2, -4 or -6 SPEED and STRENGTH, at random); juice
+  is a cup of joe, HGH or sand lobster venom (+2, +4 or +6). Accidents make the breaking
+  news before the event; juice shows up in speech balloons at the start line. Nobody
+  finds out who paid. The Koala never visits whoever is in 1st place, always visits last
+  place, and visits everyone else half the time.
 - **Kangarules Gambling Commission**: from the Minor Leagues on, random players are
   frisked before each event. Everything they bought is confiscated, in front of everyone.
 - **Loansharks**: want to go big? Once per betting event, Shrimp and Barbie will lend you

@@ -66,8 +66,9 @@ ambiguous - Chris to confirm or change):
 - Shady Koala: each item at most once per visit, any player (incl. self)
   can be targeted, money is spent even if the purchase is negated. Order:
   frisk negates ALL of that buyer's purchases -> surviving bribes protect
-  their target from kneecaps/HGH -> HGH applies -> kneecaps (SPD 0) last.
-  Frisks are random across all players (a clean frisk is shown as clean).
+  their target from accidents/juice -> the rest roll their outcome and
+  apply (see the fourth round below). Frisks are random across all
+  players (a clean frisk is shown as clean).
 - One LUCK roll per player per score, even where a formula uses LUCK more
   than once (Speed Hiking, Holding A Note).
 - Loansharks: see the third round below (fixed $Dd 5,000, once per event).
@@ -137,6 +138,28 @@ specials pay more and the loansharks are for going big, not for getting by
   leave it, at most once per betting event. No cash limit.
 - Names can be changed in the lobby (phone header). A phone that rejoins
   under a new name has its old player dropped by APGE (0.4.0), lobby only.
+
+Fourth round (2026-11-24), after 5-player playtests; the Shady Koala is where
+the strategy is:
+- "Bat to Kneecaps" became "Have an Accident" (15%): equal odds of Took a
+  fall (-2 SPD and STR), Run Over by Car (-4) or Bat to Kneecaps (-6).
+  "HGH" became "Juice" (10%): Cup of Joe (+2), HGH (+4) or Sand Lobster
+  Venom (+6). Bribe the Feds is unchanged. Outcomes and flavour text are
+  rules.KOALA_OUTCOMES.
+- Draft (Chris to confirm): every outcome on a player is added up, then
+  SPD and STR are floored at 0 (negative stats would flip formulas like
+  Half-Court's STR x SPD), so the order never matters. Juice can take a
+  stat above 10, as HGH did.
+- After betting (and any frisk) and before the event: accidents that got
+  through are shown as BREAKING NEWS on the host, one headline every 4
+  seconds (headline + flavour text with the player's name; a phase,
+  `news`, skipped when there are none). Then the event screen opens with
+  a cartoon speech balloon per juice before the animation starts. Only
+  the target and outcome are public, never the buyer; the order is
+  shuffled so it doesn't follow purchase order.
+- Draft: "[again]" is added when that player has had the same outcome
+  before this season (earlier events or earlier in the same news), on
+  accidents only, as asked; it resets for a new game.
 
 -- WORKING TOGETHER ---------------------------------------------------------
 

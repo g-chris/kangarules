@@ -150,11 +150,14 @@ def main(shots=None):
             for stat, n in builds[i].items():
                 for _ in range(n):
                     page.locator(f'[data-act=stat][data-stat={stat}][data-dir="1"]').click()
+            page.locator('#catchphrase').type(f'{NAMES[i]} takes the lot!')
             if i == 0:
                 check.shot(page, 'phone-stats')
             page.click('[data-act=submit-stats]')
             time.sleep(0.3)
         assert game.lobby_ready(), 'everyone finished but lobby is not ready'
+        said = [game.player_by_name(n).private.get('catchphrase') for n in NAMES]
+        assert said == [f'{n} takes the lot!' for n in NAMES], f'catchphrases not saved: {said}'
         assert game.vip().name == NAMES[0], 'first finisher should be the VIP'
         check.shot(host, 'host-lobby')
         check.shot(phones[0], 'phone-vip-lobby')
@@ -188,17 +191,22 @@ def main(shots=None):
         if phones[1].locator('.psst').count():   # Davo, in the middle, gets a coin flip
             tap(phones[1], '.psst')
             tap(phones[1], '[data-act=koala-exit]')
+        kylie_cash = game.player_by_name(NAMES[2]).private['cash']   # what's left after the Koala
         for i, page in enumerate(phones):
             if i == 2:
-                tap(page, '[data-act=step-size][data-step="1"]')   # bet in ones
+                tap(page, '[data-act=step-size][data-step="all"]')   # All In: + bets everything left
             for _ in range(i + 1):
                 page.locator('[data-act=bet][data-dir="1"]').nth(i).click()
+            if i == 2:   # ...then back off by 40 in tens, so Kylie still has money for later stops
+                tap(page, '[data-act=step-size][data-step="10"]')
+                for _ in range(4):
+                    page.locator('[data-act=bet][data-dir="-1"]').nth(i).click()
             if i == 1:
                 check.shot(page, 'phone-slip')
             tap(page, '[data-act=confirm-bets]')
         bets = [game.player_by_name(n).private.get('bets') for n in NAMES]
         ids = [game.player_by_name(n).id for n in NAMES]
-        assert bets == [{ids[0]: 10}, {ids[1]: 20}, {ids[2]: 3}], f'step buttons bet wrong: {bets}'
+        assert bets == [{ids[0]: 10}, {ids[1]: 20}, {ids[2]: kylie_cash - 40}], f'step buttons bet wrong: {bets}'
         # The accident makes the breaking news; the juice pops up as a balloon at the start
         wait_phase(game, 'news')
         time.sleep(R.NEWS_LEAD_SECONDS + 0.3)
@@ -215,6 +223,12 @@ def main(shots=None):
         check.shot(host, 'host-balloons')
         time.sleep(R.balloon_seconds(1) + 4)
         check.shot(host, 'host-race')
+        perf = game.public['performance']
+        winner = game.players[perf['order'][0]].name
+        assert perf['catchphrase'] == [{'id': perf['order'][0], 'text': f'{winner} takes the lot!'}], perf['catchphrase']
+        while game.phase == 'perform' and game.timer_view()['remaining'] > R.CATCHPHRASE_SECONDS - 1.5:
+            time.sleep(0.1)
+        check.shot(host, 'host-catchphrase')
         wait_phase(game, 'payout')
         check.shot(host, 'host-payout')
         check.shot(phones[0], 'phone-payout')
@@ -269,6 +283,7 @@ def main(shots=None):
         jump_to(game, STOP['card_auction'])
         wait_phase(game, 'auction')
         assert '2,500' in phones[0].inner_text('#screen'), 'no card pack value estimate'
+        assert phones[0].locator('[data-act=step-size][data-step="all"]').count() == 0, 'All In offered at the auction'
         tap(phones[0], '[data-act=place-bid]')
         tap(phones[2], '[data-act=place-bid]')
         check.shot(host, 'host-auction')
@@ -356,6 +371,8 @@ def main(shots=None):
         time.sleep(0.6)
         assert game.phase == 'lobby'
         assert phones[1].locator('[data-act=submit-stats]').count() == 1, 'not back on skill points'
+        kept = phones[1].locator('#catchphrase').input_value()
+        assert kept == f'{NAMES[1]} takes the lot!', f'catchphrase not offered again: {kept!r}'
         check.shot(phones[1], 'phone-one-more-game')
         browser.close()
 

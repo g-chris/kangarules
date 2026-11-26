@@ -130,7 +130,12 @@ class Derby(Game):
         stats = {key: whole(data.get(key), 0, R.MAX_STAT, label) for key, label in R.STATS}
         if sum(stats.values()) > R.SKILL_POINTS:
             raise Reject(f'You only have {R.SKILL_POINTS} skill points.')
+        catchphrase = R.clean_catchphrase(data.get('catchphrase', ''))
+        if catchphrase is None:
+            raise Reject(f'Keep your Victory Catchphrase to {R.MAX_CATCHPHRASE} characters.')
         player.private['stats'] = stats
+        # Private until they win an event: then it pops up on the big screen
+        player.private['catchphrase'] = catchphrase
         player.public['character_done'] = True
         self.finish_order.append(player.id)
 
@@ -154,8 +159,10 @@ class Derby(Game):
         self.public = {}
         self.finish_order = []
         for p in self.players.values():
-            head = p.public.get('head')
-            p.public, p.private = ({'head': head} if head else {}), {}
+            head, catchphrase = p.public.get('head'), p.private.get('catchphrase')
+            p.public = {'head': head} if head else {}
+            # Kept, like the head: the character screen offers it again to keep or change
+            p.private = {'catchphrase': catchphrase} if catchphrase else {}
 
     def on_quit(self):
         super().on_quit()
@@ -240,8 +247,9 @@ class Derby(Game):
         event = R.EVENTS[stop['event']]
         self.start_round()
         self.odds = R.odds_calc(self.base_stats(), stop['event'], self.rng)
+        number, of = R.gamble_number(self.season, self.public['stop'])
         self.public['event'] = {
-            'id': stop['event'], 'name': event['name'], 'setup': event['setup'],
+            'number': number, 'of': of, 'id': stop['event'], 'name': event['name'], 'setup': event['setup'],
             'town': stop['town'], 'venue': stop['venue'], 'zone_name': zone['name'],
             'venue_art': R.venue_art(stop['venue']),
             'visual': event['visual'], 'direction': event.get('direction'),
@@ -383,16 +391,21 @@ class Derby(Game):
         o = self.outcome
         o['animation'] = R.perform_seconds(self.current_stop()['event'], len(self.players))
         o['intro'] = R.balloon_seconds(len(o['balloons']))
-        self.goto('perform', timer=o['intro'] + o['animation'])
+        winner = self.players.get(o['order'][0])
+        said = winner.private.get('catchphrase') if winner else None
+        o['catchphrase'] = [{'id': winner.id, 'text': said}] if said else []
+        o['outro'] = R.CATCHPHRASE_SECONDS if said else 0
+        self.goto('perform', timer=o['intro'] + o['animation'] + o['outro'])
 
     @phase('perform')
     def enter_perform(self):
         o = self.outcome
-        # The juice speech balloons pop up over the starting line for `intro` seconds, then the
-        # event runs for `duration`
+        # The juice speech balloons pop up over the starting line for `intro` seconds, the
+        # event runs for `duration`, then the winner's Victory Catchphrase for `outro`
         self.public['performance'] = {
             'order': o['order'], 'scores': o['scores'], 'tiebroken': sorted(o['tiebroken']),
-            'balloons': o['balloons'], 'intro': o['intro'], 'duration': o['animation']}
+            'balloons': o['balloons'], 'intro': o['intro'], 'duration': o['animation'],
+            'catchphrase': o['catchphrase'], 'outro': o['outro']}
 
     @on_timeout('perform')
     def perform_done(self):

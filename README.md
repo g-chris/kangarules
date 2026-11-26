@@ -29,8 +29,11 @@ Until APGE v0.3.0 is tagged on GitHub, install the engine from a local checkout 
 ## How to play
 
 - **Skills**: STRENGTH, SPEED and MORAL COURAGE. Nobody else sees yours. Lie freely.
+- **Victory Catchphrase** (optional, up to 100 characters): pops up on the big screen
+  whenever you win an event.
 - **Betting**: at each stop, everyone sees the odds (50-1 at the longest) and bets on
-  whoever they like, or nobody, in steps of $Dd 1, 10 or 100. You start with $Dd 100.
+  whoever they like, or nobody, in steps of $Dd 10, 100 or 1,000, or All In. You start
+  with $Dd 100.
   Whoever wins the event takes 10% of the winnings on every winning bet.
 - **The season** is 13 stops, and the events come in a different order every game.
 - **Shady Koala**: some players get a "Psst!" and can buy Have an Accident, Juice or

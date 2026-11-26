@@ -7,6 +7,8 @@ const $ = id => document.getElementById(id);
 let pad = null;
 let draft = {key: null};
 const stepSize = {};      // the +/- size picked per kind of counter ('money', 'scalp'); kept between rounds
+// How far one +/- tap moves a counter. 'all' (All In) overshoots on purpose: the clamp stops it at the limit
+const stepBy = kind => stepSize[kind] === 'all' ? Infinity : stepSize[kind];
 let wakeTimer = null;
 
 /** Re-render at a set time (a reveal that happens without a state update). */
@@ -50,7 +52,7 @@ const stepper = (act, value, label, extra) =>
 function stepPicker(kind, options, rules) {
     if (!options.includes(stepSize[kind])) stepSize[kind] = rules.money_step;
     return '<div class="steps"><span class="dim">+/− by</span>' + options.map(s =>
-        `<button class="stepsize ${s === stepSize[kind] ? 'on' : ''}" data-act="step-size" data-kind="${kind}" data-step="${s}">${dd(s)}</button>`).join('') + '</div>';
+        `<button class="stepsize ${s === stepSize[kind] ? 'on' : ''}" data-act="step-size" data-kind="${kind}" data-step="${s}">${s === 'all' ? 'All In' : dd(s)}</button>`).join('') + '</div>';
 }
 
 const nameOf = (view, id) => (byId(view)[id] || {name: '?'}).name;
@@ -98,12 +100,17 @@ function lobby(view, me, d) {
     }
     if (!me.character_done) {
         d.stats = d.stats || {str: 0, spd: 0, mcr: 0};
+        if (d.catchphrase === undefined) d.catchphrase = me.private.catchphrase || '';   // last game's, to keep or change
         const left = rules.skill_points - Object.values(d.stats).reduce((a, b) => a + b, 0);
         return `<div class="center">${head(me, rules, 96)}<h2>Spend your skill points</h2>
             <p class="big">Points left: <b class="gold">${left}</b></p>
             ${rules.stats.map(s => `<div class="statrow"><span>${s.label} (${s.id.toUpperCase()})</span>
                 ${stepper('stat', d.stats[s.id], undefined, `data-stat="${s.id}"`)}</div>`).join('')}
             <p class="dim">Nobody else will ever see these. Lie about them freely.</p>
+            <label class="catchphrase"><span>Victory Catchphrase <small class="dim">(optional)</small></span>
+                <textarea id="catchphrase" class="apge-input" rows="2" maxlength="${rules.max_catchphrase}"
+                    placeholder="What you shout when you win an event">${esc(d.catchphrase)}</textarea>
+                <small class="dim" id="catchphrase-left">${rules.max_catchphrase - d.catchphrase.length} characters left</small></label>
             <button class="apge-button wide" data-act="submit-stats">Submit</button>
             <button class="link" data-act="redraw">Redraw my head</button></div>`;
     }
@@ -151,7 +158,8 @@ function bet(view, me, d) {
     }).join('');
     const canBorrow = !priv.loan_taken;   // once per betting event
     const koala = myKoala(view, me);
-    return `<h2 class="center">${esc(ev.name)}</h2><p class="center dim">${esc(ev.venue)}</p>
+    return `<p class="center gold eventno">Event ${ev.number}/${ev.of}</p>
+        <h2 class="center">${esc(ev.name)}</h2><p class="center dim">${esc(ev.venue)}</p>
         <div class="slip">${lines}</div>
         ${stepPicker('money', rules.bet_steps, rules)}
         <p class="center">Betting ${dd(total)} of ${dd(priv.cash)}</p>
@@ -226,7 +234,7 @@ function auction(view, me, d) {
         <p class="big">High bid: <b class="gold">${dd(a.high_bid || rules.auction_opening_bid)}</b>${a.leader_name ? ' by ' + esc(a.leader_name) : ''}</p>
         ${leading ? '<p class="done big">You\'re winning!</p>' : `
         ${stepper('bid', d.bid, dd(d.bid))}
-        ${stepPicker('money', rules.bet_steps, rules)}
+        ${stepPicker('money', rules.bet_steps.filter(s => s !== 'all'), rules)}
         <button class="apge-button wide" data-act="place-bid" ${d.bid > cash ? 'disabled' : ''}>Bid ${dd(d.bid)}</button>
         ${lowest > cash ? '<p class="dim">You can\'t afford to raise.</p>' : ''}`}
         <p class="dim">You have ${dd(cash)}</p></div>`;
@@ -318,7 +326,7 @@ const ACTS = {
         const next = d.stats[id] + dir;
         if (next >= 0 && next <= view.rules.max_stat && (dir < 0 || used < view.rules.skill_points)) d.stats[id] = next;
     },
-    'submit-stats': () => send('submit_stats', draft.stats),
+    'submit-stats': () => send('submit_stats', Object.assign({catchphrase: draft.catchphrase}, draft.stats)),
     redraw: () => { draft.redraw = true; },
     start(b, view) {
         if (!view.lobby_ready && !confirm('Not everyone has finished their character. Start anyway?')) return;
@@ -328,9 +336,9 @@ const ACTS = {
         // A big step that doesn't fit stops at what's left (or at zero) instead of doing nothing
         const id = b.dataset.id, stake = draft.bets[id] || 0;
         const room = view.me.private.cash - sum(draft.bets);
-        draft.bets[id] = clamp(stake + stepSize.money * Number(b.dataset.dir), 0, stake + Math.max(0, room));
+        draft.bets[id] = clamp(stake + stepBy('money') * Number(b.dataset.dir), 0, stake + Math.max(0, room));
     },
-    'step-size': b => { stepSize[b.dataset.kind] = Number(b.dataset.step); },
+    'step-size': b => { stepSize[b.dataset.kind] = b.dataset.step === 'all' ? 'all' : Number(b.dataset.step); },
     'confirm-bets': () => send('confirm_bets', {bets: draft.bets}),
     'loan-open': () => { draft.loanOpen = true; },
     'loan-close': () => { draft.loanOpen = false; },
@@ -348,13 +356,13 @@ const ACTS = {
     bid(b, view) {
         const a = view.data.auction, cash = view.me.private.cash;
         const lowest = a.leader ? a.high_bid + view.rules.money_step : view.rules.auction_opening_bid;
-        draft.bid = clamp(draft.bid + stepSize.money * Number(b.dataset.dir), lowest, Math.max(lowest, cash));
+        draft.bid = clamp(draft.bid + stepBy('money') * Number(b.dataset.dir), lowest, Math.max(lowest, cash));
     },
     'place-bid': () => send('bid', {amount: draft.bid}),
     price(b, view) {
         const face = view.data.scalp.face;
         const step = view.rules.money_step;
-        draft.price = clamp(draft.price + stepSize.scalp * Number(b.dataset.dir), step, face * view.rules.scalp_max_multiplier);
+        draft.price = clamp(draft.price + stepBy('scalp') * Number(b.dataset.dir), step, face * view.rules.scalp_max_multiplier);
     },
     'submit-price': () => send('scalp_ask', {price: draft.price}),
     'rename-open': () => {
@@ -421,7 +429,11 @@ function render(view) {
         html = lobby(view, me, d);
         if (html === null) { overlay(renaming ? renameSheet(view, me) : ''); return; }
         show('screen');
+        // Someone joining re-renders the lobby: don't kick a player out of the catchphrase box
+        const typing = document.activeElement && document.activeElement.id === 'catchphrase'
+            ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
         $('screen').innerHTML = html;
+        if (typing && $('catchphrase')) { $('catchphrase').focus(); $('catchphrase').setSelectionRange(...typing); }
         overlay(renaming ? renameSheet(view, me) : '');
         return;
     } else {
@@ -435,6 +447,11 @@ function render(view) {
 
 apge.on('state', render);
 apge.on('kicked', () => { draft = {key: null}; renaming = false; });
+document.addEventListener('input', e => {
+    if (e.target.id !== 'catchphrase') return;
+    draft.catchphrase = e.target.value;
+    $('catchphrase-left').textContent = `${e.target.maxLength - e.target.value.length} characters left`;
+});
 document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.id === 'rename-input') ACTS['rename-save']();
 });

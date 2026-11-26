@@ -100,6 +100,19 @@ def performing(event):
     return setup
 
 
+def catchphrases(event):
+    """Everyone has the longest Victory Catchphrase allowed, so whoever wins shows the worst case."""
+    def setup(game):
+        betting(event)(game)
+        said = "Too easy, mate. Tell your mum I said g'day and that I'll be needing her car keys back by Tuesday!!"
+        for p in players(game):
+            p.private['catchphrase'] = said[:R.MAX_CATCHPHRASE]
+        game.finish_betting()
+        if game.phase == 'frisk':
+            game.frisk_done()
+    return setup
+
+
 def my_purchases(game):
     """The phone's player (the first) meets the Shady Koala and buys two things."""
     me, other = players(game)[:2]
@@ -261,6 +274,8 @@ SCREENS = [
     Screen('perform-balloons', 'Juice speech balloons (before the event)',
            setup=koala_effects('fist_fight', [{'juice': 0}, {'juice': 1}, {'juice': 2}, {'juice': 0}]),
            elapsed=R.balloon_seconds(4) - 2.5, group='Events'),
+    Screen('perform-catchphrase', "Winner's Victory Catchphrase (after the event)", setup=catchphrases('foot_race'),
+           elapsed=R.perform_seconds('foot_race', N) + R.CATCHPHRASE_SECONDS - 1, group='Events'),
     Screen('payout', 'Payout', setup=payout, group='Betting'),
 ] + [
     Screen(f"perform-{stop['event']}", R.EVENTS[stop['event']]['name'], setup=performing(stop['event']),

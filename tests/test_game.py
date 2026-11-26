@@ -67,6 +67,17 @@ class LobbyTests(DerbyTestCase):
         with self.assertRaises(Reject):
             self.act(self.ann, 'submit_stats', str=1, spd=1, mcr=1)
 
+    def test_victory_catchphrase_is_optional_tidied_and_limited(self):
+        self.act(self.ann, 'submit_head', head=HEAD)
+        for bad in ('x' * (R.MAX_CATCHPHRASE + 1), 42, ['Oi']):
+            with self.assertRaises(Reject):
+                self.act(self.ann, 'submit_stats', str=1, spd=1, mcr=1, catchphrase=bad)
+        self.act(self.ann, 'submit_stats', str=1, spd=1, mcr=1, catchphrase='  Oi\n oi   oi! ')
+        self.assertEqual(self.ann.private['catchphrase'], 'Oi oi oi!')
+        self.act(self.bob, 'submit_head', head=HEAD)
+        self.act(self.bob, 'submit_stats', str=1, spd=1, mcr=1)   # an older phone sends none
+        self.assertEqual(self.bob.private['catchphrase'], '')
+
     def test_starting_early_gives_stragglers_a_blank_character(self):
         self.create(self.ann, spd=5)
         self.game._start()
@@ -225,6 +236,29 @@ class BettingTests(DerbyTestCase):
         perf = self.game.public['performance']
         self.assertEqual((perf['balloons'], perf['intro']), ([], 0))
 
+    def test_winner_catchphrase_pops_up_after_the_event(self):
+        self.start_at_betting()
+        for p in (self.ann, self.bob, self.cat):
+            p.private['catchphrase'] = p.name + ' wins again!'
+        self.lock_in_everyone()
+        perf = self.game.public['performance']
+        winner = perf['order'][0]
+        self.assertEqual(perf['catchphrase'], [{'id': winner, 'text': self.game.players[winner].name + ' wins again!'}])
+        self.assertEqual(perf['outro'], R.CATCHPHRASE_SECONDS)
+        self.assertEqual(self.game.timer['duration'], perf['intro'] + perf['duration'] + perf['outro'])
+
+    def test_no_catchphrase_no_outro(self):
+        self.start_at_betting()
+        self.lock_in_everyone()
+        perf = self.game.public['performance']
+        self.assertEqual((perf['catchphrase'], perf['outro']), ([], 0))
+
+    def test_betting_shows_which_gambling_event_this_is(self):
+        self.start_at_betting()
+        event = self.game.public['event']
+        gambles = [i for i, s in enumerate(self.game.season) if s['kind'] == 'gamble']
+        self.assertEqual((event['number'], event['of']), (gambles.index(self.game.public['stop']) + 1, 9))
+
     def test_a_bribe_keeps_the_target_out_of_the_news(self):
         self.start_at_betting()
         self.buy(self.ann, accident=self.bob, juice=self.bob)
@@ -304,6 +338,13 @@ class PrivacyAndResetTests(DerbyTestCase):
         self.assertEqual(self.ann.public, {'head': HEAD})
         self.assertEqual(self.ann.private, {})
         self.assertIsNone(self.game.vip())
+
+    def test_one_more_game_keeps_the_catchphrase_to_offer_again(self):
+        self.act(self.ann, 'submit_head', head=HEAD)
+        self.act(self.ann, 'submit_stats', str=1, spd=1, mcr=1, catchphrase='Strewth!')
+        self.game._start()
+        self.game._reset()
+        self.assertEqual(self.ann.private, {'catchphrase': 'Strewth!'})
 
 
 class SpecialsTests(DerbyTestCase):

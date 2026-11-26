@@ -22,10 +22,12 @@ STATS = (('str', 'STRENGTH'), ('spd', 'SPEED'), ('mcr', 'MORAL COURAGE'))
 LUCK_LOW = 1
 LUCK_HIGH = 10
 MONEY_STEP = 10             # every +/- button moves money by this much (loans, ticket prices)
-BET_STEPS = (1, 10, 100)    # the betting slip and card auction let you pick the +/- size
+BET_STEPS = (10, 100, 1000, 'all')   # the betting slip and card auction let you pick the +/- size;
+                                     # 'all' = All In: + puts in everything you can, - back to the floor
 LOAN_AMOUNT = 5000          # the loansharks lend this much, take it or leave it, once per event
 LOAN_MULTIPLIER = 2         # the loansharks want DOUBLE back at the end
 MAX_NAME = 15
+MAX_CATCHPHRASE = 100      # the optional Victory Catchphrase from character creation
 
 # Odds: run the event this many times with fresh LUCK and count wins
 ODDS_SIMS = 100
@@ -53,6 +55,7 @@ NEWS_LEAD_SECONDS = 2       # breaking news: the banner on its own before the fi
 NEWS_SECONDS_EACH = 4       # ...then a new accident headline this often
 BALLOON_SECONDS_EACH = 1    # before an event starts, a juice speech balloon pops up this often...
 BALLOON_HOLD_SECONDS = 3    # ...and they all stay up this long before the starting gun
+CATCHPHRASE_SECONDS = 4     # the winner's Victory Catchphrase balloon after the event (if they wrote one)
 
 # ---- avatars -----------------------------------------------------------------------------
 
@@ -531,6 +534,21 @@ def balloon_seconds(balloons):
     return BALLOON_HOLD_SECONDS + BALLOON_SECONDS_EACH * balloons if balloons else 0
 
 
+def clean_catchphrase(text):
+    """A Victory Catchphrase from the phone: runs of whitespace (newlines too) become one space.
+    Returns None if it isn't text or is too long; '' means no catchphrase."""
+    if not isinstance(text, str):
+        return None
+    text = ' '.join(text.split())
+    return text if len(text) <= MAX_CATCHPHRASE else None
+
+
+def gamble_number(season, stop_index):
+    """(n, total): the stop at stop_index is gambling event n of the season's total."""
+    gambles = [i for i, stop in enumerate(season) if stop['kind'] == 'gamble']
+    return gambles.index(stop_index) + 1, len(gambles)
+
+
 def client_rules():
     """The numbers the phone and host pages need, sent in every view (one source of truth)."""
     return {
@@ -547,7 +565,7 @@ def client_rules():
         'card_pack_value': list(CARD_PACK_VALUE), 'bet_steps': list(BET_STEPS),
         'winner_cut_percent': WINNER_CUT_PERCENT, 'final_reveal_seconds': FINAL_REVEAL_SECONDS,
         'news_lead_seconds': NEWS_LEAD_SECONDS, 'news_seconds_each': NEWS_SECONDS_EACH,
-        'balloon_seconds_each': BALLOON_SECONDS_EACH,
+        'balloon_seconds_each': BALLOON_SECONDS_EACH, 'max_catchphrase': MAX_CATCHPHRASE,
     }
 
 

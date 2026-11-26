@@ -1,5 +1,21 @@
 # Down Under Gambler's Sweat It Out! Derby '27 - Change Log
 
+## Version 0.6.0 (2026-11-25)
+
+### New Features
+- **Victory Catchphrase**: character creation has an optional box (up to 100 characters)
+  for what you shout when you win. Nobody sees it until you win a gambling event: then,
+  after the event, it pops up on the big screen in a speech balloon over your head (4
+  seconds; no catchphrase, no wait). One more game offers last game's to keep or change
+- **Event counter**: the betting slip and the host's odds board say which gambling event
+  this is ("Event 7/9")
+
+### Changes
+- **Bet in 10s, 100s, 1000s or All In** (were 1s, 10s or 100s). With All In picked, +
+  puts everything you have left on that player and - takes it back to zero. Bets can
+  still be any whole amount, so All In covers odd change left by Shady Koala prices. The
+  card auction's bid has 10 / 100 / 1000 but no All In
+
 ## Version 0.5.0 (2026-11-24)
 
 The Shady Koala, where most of the strategy is, after 5-player playtests: its two attacks

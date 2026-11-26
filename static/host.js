@@ -89,7 +89,7 @@ const SCREENS = {
         const ev = view.data.event, odds = view.data.odds, rules = view.rules;
         const rows = view.players.map(p => `<tr><td>${head(p, rules, 40)}</td><td>${esc(p.name)}</td>` +
             `<td class="odds">${odds[p.id].label}</td><td>${p.done ? '✓' : ''}</td></tr>`).join('');
-        fill(`<div class="oddsbox"><h2>${esc(ev.name)} · Odds</h2><table>${rows}</table>
+        fill(`<div class="oddsbox"><p class="gold">Event ${ev.number}/${ev.of}</p><h2>${esc(ev.name)} · Odds</h2><table>${rows}</table>
                 <p class="dim">Place your bets on your phone!</p></div>`,
             `<div class="setup">${art(ev.venue_art)}<div><h2>${esc(ev.name)}</h2>
                 <p>${esc(ev.venue)} · ${esc(ev.town)} · ${esc(ev.zone_name)}</p>
